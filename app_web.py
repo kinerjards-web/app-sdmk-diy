@@ -5,41 +5,97 @@ import os
 
 # Konfigurasi Halaman Web
 st.set_page_config(
-    page_title="Aplikasi Rekap Data SDMK Fasyankes DIY",
-    page_icon="🏥",
+    page_title="Rekap Data SDMK Fasyankes DIY",
+    page_icon="🏛️",
     layout="wide"
 )
 
-st.title("🚀 Aplikasi Rekap Data SDMK Fasyankes & Quality Control")
-st.markdown("---")
+# --- STYLING CSS KHAS MODERN DIY ---
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f8fafc;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .diy-header {
+        background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
+        padding: 25px 30px;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .diy-header h1 {
+        margin: 0;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+    .diy-header p {
+        margin: 5px 0 0 0;
+        font-size: 14px;
+        opacity: 0.9;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# Sidebar untuk Panduan & Upload File
-st.sidebar.header("📁 1. Unggah Berkas Sumber")
+# --- HEADER UTAMA ---
+st.markdown("""
+    <div class="diy-header">
+        <h1>🏛️ Portal Konsolidasi & QC SDMK Fasyankes DIY</h1>
+        <p>Dinas Kesehatan Daerah Istimewa Yogyakarta • Kustomisasi Kolom & Transformasi Data</p>
+    </div>
+""", unsafe_allow_html=True)
+
+# --- PANEL KONTROL & PILIHAN KOLOM (SIDEBAR) ---
+st.sidebar.markdown("### ⚙️ Panel Kontrol & Pengaturan")
+st.sidebar.markdown("---")
+
 uploaded_files = st.sidebar.file_uploader(
-    "Pilih file laporan (.xls / .html)", 
+    "1️⃣ Pilih Berkas Laporan (.xls / .html)", 
     type=["xls", "html"], 
     accept_multiple_files=True
 )
 
 master_file = st.sidebar.file_uploader(
-    "Pilih file Master Fasyankes (.xlsx)", 
+    "2️⃣ Pilih Berkas Master Fasyankes (.xlsx)", 
     type=["xlsx"]
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info(
-    "**Panduan Singkat:**\n"
-    "1. Upload satu atau banyak file laporan fasyankes.\n"
-    "2. Upload file master fasyankes baku.\n"
-    "3. Klik tombol proses di bawah.\n"
-    "4. Download hasil file bersih & laporan error."
-)
+st.sidebar.markdown("### 📋 Pilih Kolom Output Target")
+st.sidebar.caption("Centang kolom yang ingin Anda sertakan dalam file hasil:")
 
-if st.button("🔄 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_container_width=True):
+# Daftar master kolom yang tersedia (NIK secara default tidak dicentang / dihilangkan)
+available_columns = {
+    "kode_unit": ("Kode Fasyankes", True),
+    "nama_unit": ("Nama Fasyankes", True),
+    "tanggal_lahir": ("Tanggal Lahir", True),
+    "nama": ("Nama Lengkap", True),
+    "jenis_tenaga": ("Jenis Tenaga", True),
+    "status_pegawai": ("Status Pegawai", True),
+    "jenis_kelamin": ("Jenis Kelamin", True),
+    "nomor_str": ("Nomor STR", True),
+    "status_str": ("Status STR", True),
+    "nomor_sip": ("Nomor SIP", True),
+    "tanggal_terbit_sip": ("Tanggal Terbit SIP", True),
+    "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
+    "nik": ("NIK (Nomor Induk Kependudukan)", False) # Default False (dihilangkan)
+}
+
+selected_target_cols = {}
+for col_key, (col_label, default_val) in available_columns.items():
+    if st.sidebar.checkbox(col_label, value=default_val):
+        selected_target_cols[col_key] = col_label
+
+# --- TOMBOL UTAMA ---
+if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_container_width=True):
     if not uploaded_files or not master_file:
-        st.error("⚠️ Harap unggah minimal satu file laporan dan file Master Fasyankes terlebih dahulu!")
+        st.error("⚠️ Harap unggah berkas laporan fasyankes dan master fasyankes terlebih dahulu melalui panel samping!")
+    elif not selected_target_cols:
+        st.error("⚠️ Pilih minimal satu kolom target output di panel samping!")
     else:
-        with st.spinner("Sedang memproses konsolidasi data dan pemeriksaan kualitas..."):
+        with st.spinner("Sedang memproses konsolidasi, pembersihan teks, dan audit kualitas data..."):
             try:
                 # 1. Membaca File Laporan
                 data_frames = []
@@ -51,7 +107,6 @@ if st.button("🔄 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                         dfs = pd.read_html(io.StringIO(html_content))
                         if len(dfs) > 0:
                             df = dfs[0]
-                            # Deteksi header baris pertama jika berupa tabel fasyankes
                             if "No" in str(df.iloc[0, 0]) or "Nama Fasyankes" in str(df.iloc[0, 1]):
                                 df.columns = df.iloc[0]
                                 df = df[1:].reset_index(drop=True)
@@ -60,14 +115,14 @@ if st.button("🔄 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                         st.warning(f"Gagal membaca {uploaded_file.name}: {e}")
 
                 if not data_frames:
-                    st.error("Tidak ada data valid yang berhasil diekstrak dari file laporan.")
+                    st.error("Tidak ada data valid yang berhasil diekstrak.")
                 else:
                     df_raw = pd.concat(data_frames, ignore_index=True)
 
                     # 2. Membaca Master Fasyankes
                     df_master = pd.read_excel(master_file)
 
-                    # 3. Normalisasi & Joining Aman (Anti Spasi & Case Insensitive)
+                    # 3. Normalisasi & Joining Aman
                     col_raw = "Nama Fasyankes"
                     col_m = "Nama Fasyankes"
 
@@ -85,7 +140,6 @@ if st.button("🔄 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                             suffixes=("", "_master"),
                         ).drop(columns=['_join_temp'])
 
-                        # Rewrite Nama Fasyankes dengan nama baku Master
                         if f"{col_raw}_master" in df_merged.columns:
                             df_merged[col_raw] = df_merged[f"{col_raw}_master"].fillna(df_merged[col_raw])
                     else:
@@ -102,40 +156,42 @@ if st.button("🔄 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                             val_str = "'" + val_str
                         return val_str
 
-                    # 5. Mapping Kolom Sesuai Standar Target
-                    mapping_config = [
-                        ("Master Fasyankes", "Kode", "kode_unit", "Teks Bersih"),
-                        ("Laporan Fasyankes", "Nama Fasyankes", "nama_unit", "Teks"),
-                        ("Laporan Fasyankes", "NIK", "nik", "Teks Bersih"),
-                        ("Laporan Fasyankes", "Tanggal Lahir", "tanggal_lahir", "Tanggal (DD-MM-YYYY)"),
-                        ("Laporan Fasyankes", "Nama Lengkap", "nama", "Teks"),
-                        ("Laporan Fasyankes", "Jenis Tenaga", "jenis_tenaga", "Teks"),
-                        ("Laporan Fasyankes", "Status", "status_pegawai", "Teks"),
-                        ("Laporan Fasyankes", "Jenis Kelamin", "jenis_kelamin", "Teks"),
-                        ("Laporan Fasyankes", "Nomor STR", "nomor_str", "Teks Bersih"),
-                        ("Laporan Fasyankes", "Status STR", "status_str", "Teks"),
-                        ("Laporan Fasyankes", "Nomor SIP", "nomor_sip", "Teks Bersih"),
-                        ("Laporan Fasyankes", "Tanggal Terbit SIP", "tanggal_terbit_sip", "Tanggal (DD-MM-YYYY)"),
-                        ("Laporan Fasyankes", "Tanggal Berakhir SIP", "tanggal_berakhir_sip", "Tanggal (DD-MM-YYYY)"),
-                    ]
+                    # 5. Konfigurasi Pemetaan Sumber ke Target
+                    mapping_config = {
+                        "kode_unit": ("Master Fasyankes", "Kode", "Teks Bersih"),
+                        "nama_unit": ("Laporan Fasyankes", "Nama Fasyankes", "Teks"),
+                        "nik": ("Laporan Fasyankes", "NIK", "Teks Bersih"),
+                        "tanggal_lahir": ("Laporan Fasyankes", "Tanggal Lahir", "Tanggal (DD-MM-YYYY)"),
+                        "nama": ("Laporan Fasyankes", "Nama Lengkap", "Teks"),
+                        "jenis_tenaga": ("Laporan Fasyankes", "Jenis Tenaga", "Teks"),
+                        "status_pegawai": ("Laporan Fasyankes", "Status", "Teks"),
+                        "jenis_kelamin": ("Laporan Fasyankes", "Jenis Kelamin", "Teks"),
+                        "nomor_str": ("Laporan Fasyankes", "Nomor STR", "Teks Bersih"),
+                        "status_str": ("Laporan Fasyankes", "Status STR", "Teks"),
+                        "nomor_sip": ("Laporan Fasyankes", "Nomor SIP", "Teks Bersih"),
+                        "tanggal_terbit_sip": ("Laporan Fasyankes", "Tanggal Terbit SIP", "Tanggal (DD-MM-YYYY)"),
+                        "tanggal_berakhir_sip": ("Laporan Fasyankes", "Tanggal Berakhir SIP", "Tanggal (DD-MM-YYYY)"),
+                    }
 
                     df_final = pd.DataFrame()
                     df_final["no"] = range(1, len(df_merged) + 1)
                     target_to_tipe = {}
 
-                    for _, _, target, tipe in mapping_config:
-                        target_to_tipe[target] = tipe
+                    # Hanya proses kolom yang dicentang oleh user
+                    for target_key in selected_target_cols.keys():
+                        if target_key in mapping_config:
+                            _, asal, tipe = mapping_config[target_key]
+                            target_to_tipe[target_key] = tipe
 
-                    for _, asal, target, tipe in mapping_config:
-                        if asal in df_merged.columns:
-                            if tipe == "Tanggal (DD-MM-YYYY)":
-                                df_final[target] = pd.to_datetime(df_merged[asal], errors="coerce")
-                            elif tipe == "Angka":
-                                df_final[target] = pd.to_numeric(df_merged[asal], errors="coerce")
+                            if asal in df_merged.columns:
+                                if tipe == "Tanggal (DD-MM-YYYY)":
+                                    df_final[target_key] = pd.to_datetime(df_merged[asal], errors="coerce")
+                                elif tipe == "Angka":
+                                    df_final[target_key] = pd.to_numeric(df_merged[asal], errors="coerce")
+                                else:
+                                    df_final[target_key] = df_merged[asal].apply(force_string)
                             else:
-                                df_final[target] = df_merged[asal].apply(force_string)
-                        else:
-                            df_final[target] = None
+                                df_final[target_key] = None
 
                     # 6. Analisis QC (Data Kosong)
                     df_tanpa_kode = pd.DataFrame()
@@ -150,7 +206,7 @@ if st.button("🔄 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                         cols_tgl = [c for c in ["no", "nama", "nama_unit", "jenis_tenaga", "tanggal_lahir"] if c in df_final.columns]
                         df_tanpa_tgl = df_final[mask_tgl][cols_tgl]
 
-                    # 7. Generate Excel ke Memory Buffer
+                    # 7. Generate Excel dengan Lebar Kolom Otomatis (Auto-Fit)
                     output_buffer = io.BytesIO()
                     with pd.ExcelWriter(
                         output_buffer,
@@ -158,48 +214,76 @@ if st.button("🔄 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                         date_format="DD-MM-YYYY",
                         datetime_format="DD-MM-YYYY",
                     ) as writer:
-                        df_final.to_excel(writer, sheet_name="Data_Clean", index=False)
-                        worksheet = writer.sheets["Data_Clean"]
+                        
+                        sheets_data = {
+                            "Data_Clean": df_final,
+                            "Error_Tanpa_Kode_Unit": df_tanpa_kode,
+                            "Error_Tanpa_Tgl_Lahir": df_tanpa_tgl
+                        }
 
-                        # Format sel openpyxl aman
-                        for col in worksheet.iter_cols(min_row=2):
-                            col_name = worksheet.cell(row=1, column=col[0].column).value
-                            tipe_aturan = target_to_tipe.get(col_name, "Teks") if col_name != "no" else "Angka"
+                        for sheet_name, dframe in sheets_data.items():
+                            if not dframe.empty:
+                                dframe.to_excel(writer, sheet_name=sheet_name, index=False)
+                        
+                        wb = writer.book
+                        
+                        if "Data_Clean" in wb.sheetnames:
+                            ws = wb["Data_Clean"]
+                            for col in ws.iter_cols(min_row=2):
+                                col_name = ws.cell(row=1, column=col[0].column).value
+                                tipe_aturan = target_to_tipe.get(col_name, "Teks") if col_name != "no" else "Angka"
 
-                            if tipe_aturan == "Tanggal (DD-MM-YYYY)":
-                                for cell in col:
-                                    if cell.value is not None:
-                                        cell.number_format = "DD-MM-YYYY"
-                            elif tipe_aturan == "Angka":
-                                for cell in col:
-                                    if cell.value is not None:
-                                        cell.number_format = "0"
-                            else:
-                                for cell in col:
-                                    if cell.value is not None:
-                                        cell.number_format = '@'
+                                if tipe_aturan == "Tanggal (DD-MM-YYYY)":
+                                    for cell in col:
+                                        if cell.value is not None:
+                                            cell.number_format = "DD-MM-YYYY"
+                                elif tipe_aturan == "Angka":
+                                    for col_cell in col:
+                                        if col_cell.value is not None:
+                                            col_cell.number_format = "0"
+                                else:
+                                    for col_cell in col:
+                                        if col_cell.value is not None:
+                                            col_cell.number_format = '@'
 
-                        if not df_tanpa_kode.empty:
-                            df_tanpa_kode.to_excel(writer, sheet_name="Error_Tanpa_Kode_Unit", index=False)
-                        if not df_tanpa_tgl.empty:
-                            df_tanpa_tgl.to_excel(writer, sheet_name="Error_Tanpa_Tgl_Lahir", index=False)
+                        # Auto-fit width untuk semua sheet
+                        for sheetname in wb.sheetnames:
+                            worksheet = wb[sheetname]
+                            for col in worksheet.columns:
+                                max_length = 0
+                                column_letter = col[0].column_letter
+                                for cell in col:
+                                    try:
+                                        if cell.value:
+                                            cell_length = len(str(cell.value))
+                                            if cell_length > max_length:
+                                                max_length = cell_length
+                                    except:
+                                        pass
+                                adjusted_width = max(max_length + 4, 12)
+                                worksheet.column_dimensions[column_letter].width = adjusted_width
 
                     output_buffer.seek(0)
 
-                    # Tampilan Sukses & Tombol Download
-                    st.success("🎉 Konsolidasi dan Analisis Kualitas Data Berhasil Diselesaikan!")
+                    # Tampilan Statistik & Tombol Unduh
+                    st.success("✨ Konsolidasi berhasil dengan kustomisasi kolom pilihan Anda!")
                     
-                    col1, col2 = st.columns(2)
-                    col1.metric("Total Data Pegawai Bersih", f"{len(df_final)} Baris")
-                    col2.metric("Fasyankes Tanpa Kode Unit", f"{len(df_tanpa_kode)} Fasyankes")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
+                    with col2:
+                        st.metric("Fasyankes Tanpa Kode", f"{len(df_tanpa_kode)} Unit")
+                    with col3:
+                        st.metric("Pegawai Tanpa Tgl Lahir", f"{len(df_tanpa_tgl)} Orang")
 
+                    st.markdown("---")
                     st.download_button(
-                        label="📥 Download File Hasil Final (Data_Pegawai_Final.xlsx)",
+                        label="📥 Unduh File Excel Profesional (Rapi & Sesuai Pilihan Kolom)",
                         data=output_buffer,
-                        file_name="Data_Pegawai_Final.xlsx",
+                        file_name="Data_Pegawai_Final_DIY.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
 
             except Exception as e:
-                st.error(f"Terjadi kesalahan sistem saat memproses data: {e}")
+                st.error(f"Terjadi kesalahan teknis sistem: {e}")
