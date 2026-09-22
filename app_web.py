@@ -3,12 +3,19 @@ import pandas as pd
 import io
 import os
 
-# Konfigurasi Halaman Web
+# --- KONFIGURASI HALAMAN ---
 st.set_page_config(
     page_title="Rekap Data SDMK Fasyankes DIY",
     page_icon="🏛️",
     layout="wide"
 )
+
+# Inisialisasi Session State untuk fitur Reset Upload
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+
+def reset_data():
+    st.session_state.uploader_key += 1
 
 # --- STYLING CSS KHAS MODERN DIY ---
 st.markdown("""
@@ -47,26 +54,34 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# --- PANEL KONTROL & PILIHAN KOLOM (SIDEBAR) ---
+# --- PANEL KONTROL & UPLOAD (SIDEBAR) ---
 st.sidebar.markdown("### ⚙️ Panel Kontrol & Pengaturan")
 st.sidebar.markdown("---")
 
+# Menggunakan kunci dinamis dari session_state agar bisa di-reset
 uploaded_files = st.sidebar.file_uploader(
     "1️⃣ Pilih Berkas Laporan (.xls / .html)", 
     type=["xls", "html"], 
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key=f"laporan_{st.session_state.uploader_key}"
 )
 
 master_file = st.sidebar.file_uploader(
     "2️⃣ Pilih Berkas Master Fasyankes (.xlsx)", 
-    type=["xlsx"]
+    type=["xlsx"],
+    key=f"master_{st.session_state.uploader_key}"
 )
+
+# Tombol Reset Data
+if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=True):
+    reset_data()
+    st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📋 Pilih Kolom Output Target")
 st.sidebar.caption("Centang kolom yang ingin Anda sertakan dalam file hasil:")
 
-# Daftar master kolom yang tersedia (NIK secara default tidak dicentang / dihilangkan)
+# Daftar master kolom yang tersedia
 available_columns = {
     "kode_unit": ("Kode Fasyankes", True),
     "nama_unit": ("Nama Fasyankes", True),
@@ -80,7 +95,7 @@ available_columns = {
     "nomor_sip": ("Nomor SIP", True),
     "tanggal_terbit_sip": ("Tanggal Terbit SIP", True),
     "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
-    "nik": ("NIK (Nomor Induk Kependudukan)", False) # Default False (dihilangkan)
+    "nik": ("NIK (Nomor Induk)", False) 
 }
 
 selected_target_cols = {}
@@ -97,20 +112,24 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
     else:
         with st.spinner("Sedang memproses konsolidasi, pembersihan teks, dan audit kualitas data..."):
             try:
-                # 1. Membaca File Laporan
+                # 1. Membaca File Laporan dengan Parser HTML yang Diperkuat
                 data_frames = []
                 for uploaded_file in uploaded_files:
                     try:
                         bytes_data = uploaded_file.getvalue()
                         html_content = bytes_data.decode('utf-8', errors='replace')
                         
-                        dfs = pd.read_html(io.StringIO(html_content))
+                        # Memaksa pandas mencoba parser lxml, bs4, dan html5lib secara berurutan
+                        dfs = pd.read_html(io.StringIO(html_content), flavor=['lxml', 'bs4', 'html5lib'])
+                        
                         if len(dfs) > 0:
                             df = dfs[0]
                             if "No" in str(df.iloc[0, 0]) or "Nama Fasyankes" in str(df.iloc[0, 1]):
                                 df.columns = df.iloc[0]
                                 df = df[1:].reset_index(drop=True)
                             data_frames.append(df)
+                    except ValueError as ve:
+                        st.error(f"Gagal membaca {uploaded_file.name}. Pastikan 'html5lib' dan 'beautifulsoup4' terinstal di requirements.txt. Error: {ve}")
                     except Exception as e:
                         st.warning(f"Gagal membaca {uploaded_file.name}: {e}")
 
@@ -177,7 +196,6 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                     df_final["no"] = range(1, len(df_merged) + 1)
                     target_to_tipe = {}
 
-                    # Hanya proses kolom yang dicentang oleh user
                     for target_key in selected_target_cols.keys():
                         if target_key in mapping_config:
                             _, asal, tipe = mapping_config[target_key]
@@ -206,7 +224,7 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                         cols_tgl = [c for c in ["no", "nama", "nama_unit", "jenis_tenaga", "tanggal_lahir"] if c in df_final.columns]
                         df_tanpa_tgl = df_final[mask_tgl][cols_tgl]
 
-                    # 7. Generate Excel dengan Lebar Kolom Otomatis (Auto-Fit)
+                    # 7. Generate Excel dengan Auto-Fit
                     output_buffer = io.BytesIO()
                     with pd.ExcelWriter(
                         output_buffer,
@@ -246,7 +264,7 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                                         if col_cell.value is not None:
                                             col_cell.number_format = '@'
 
-                        # Auto-fit width untuk semua sheet
+                        # Auto-fit width 
                         for sheetname in wb.sheetnames:
                             worksheet = wb[sheetname]
                             for col in worksheet.columns:
@@ -265,7 +283,7 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
 
                     output_buffer.seek(0)
 
-                    # Tampilan Statistik & Tombol Unduh
+                    # Tampilan Statistik
                     st.success("✨ Konsolidasi berhasil dengan kustomisasi kolom pilihan Anda!")
                     
                     col1, col2, col3 = st.columns(3)
