@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import os
+import base64
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(
@@ -16,26 +17,60 @@ if "uploader_key" not in st.session_state:
 def reset_data():
     st.session_state.uploader_key += 1
 
-# --- STYLING CSS KHAS MODERN DIY ---
+# --- FUNGSI PEMBACA LOGO (BASE64) ---
+@st.cache_data
+def get_image_base64(file_path):
+    try:
+        with open(file_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode('utf-8')
+    except Exception:
+        return ""
+
+# Membaca file gambar logo_diy.jpg
+logo_b64 = get_image_base64("logo_diy.jpg")
+
+# --- STYLING CSS KHAS MODERN DIY DENGAN LOGO ---
 st.markdown("""
     <style>
     .main { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     .diy-header {
         background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
-        padding: 25px 30px; border-radius: 12px; color: white;
+        padding: 20px 30px; border-radius: 12px; color: white;
         margin-bottom: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        display: flex; align-items: center; /* Membuat logo & teks sejajar horizontal */
+    }
+    .diy-header img {
+        width: 75px; /* Ukuran Logo */
+        height: auto;
+        margin-right: 25px;
     }
     .diy-header h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
     .diy-header p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.9; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-    <div class="diy-header">
-        <h1>🏛️ Portal Konsolidasi & QC SDMK Fasyankes DIY</h1>
-        <p>Dinas Kesehatan Daerah Istimewa Yogyakarta • Kustomisasi Kolom & Transformasi Data</p>
-    </div>
-""", unsafe_allow_html=True)
+# --- MENAMPILKAN HEADER DENGAN LOGO PEMDA DIY ---
+if logo_b64:
+    header_html = f"""
+        <div class="diy-header">
+            <img src="data:image/jpeg;base64,{logo_b64}" alt="Logo Pemda DIY">
+            <div>
+                <h1>Portal Konsolidasi & QC SDMK Fasyankes DIY</h1>
+                <p>Dinas Kesehatan Daerah Istimewa Yogyakarta • Kustomisasi Kolom & Transformasi Data</p>
+            </div>
+        </div>
+    """
+else:
+    # Tampilan cadangan jika file logo_diy.jpg tidak ditemukan
+    header_html = """
+        <div class="diy-header">
+            <div>
+                <h1>🏛️ Portal Konsolidasi & QC SDMK Fasyankes DIY</h1>
+                <p>Dinas Kesehatan Daerah Istimewa Yogyakarta • Kustomisasi Kolom & Transformasi Data</p>
+            </div>
+        </div>
+    """
+st.markdown(header_html, unsafe_allow_html=True)
 
 # --- PANEL KONTROL & UPLOAD (SIDEBAR) ---
 st.sidebar.markdown("### ⚙️ Panel Kontrol & Pengaturan")
@@ -155,11 +190,10 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                 df_raw = pd.concat(data_frames, ignore_index=True)
 
                 # -------------------------------------------------------------
-                # 2. BACA & DETEKSI HEADER MASTER FASYANKES (FITUR BARU)
+                # 2. BACA & DETEKSI HEADER MASTER FASYANKES
                 # -------------------------------------------------------------
                 df_master = pd.read_excel(master_file)
                 
-                # Smart Header khusus untuk Master
                 header_found_master = False
                 if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
                     header_found_master = True
@@ -172,7 +206,7 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                             break
                             
                 if not header_found_master:
-                    st.error("❌ Gagal Menggabungkan Data: Kolom 'Nama Fasyankes' tidak terdeteksi di dalam file Master Fasyankes. Pastikan file Master valid.")
+                    st.error("❌ Gagal Menggabungkan Data: Kolom 'Nama Fasyankes' tidak terdeteksi di dalam file Master Fasyankes.")
                     st.stop()
 
                 rename_master = {}
@@ -200,7 +234,7 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                     st.stop()
 
                 # -------------------------------------------------------------
-                # 4. FUNGSI PEMBERSIH STRING (Anti Desimal & Formula)
+                # 4. FUNGSI PEMBERSIH STRING
                 # -------------------------------------------------------------
                 def force_string(val):
                     if pd.isna(val) or val is None or str(val).lower() == 'nan': return None
