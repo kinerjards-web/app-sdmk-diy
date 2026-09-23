@@ -91,14 +91,14 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
     else:
         with st.spinner("Sedang memproses data..."):
             try:
-                # 1. BACA & DETEKSI HEADER LAPORAN
+                # -------------------------------------------------------------
+                # 1. BACA & DETEKSI HEADER LAPORAN FASYANKES
+                # -------------------------------------------------------------
                 data_frames = []
                 for uploaded_file in uploaded_files:
                     df_temp = None
                     try:
                         bytes_data = uploaded_file.getvalue()
-                        
-                        # A. Coba baca sebagai HTML
                         try:
                             html_content = bytes_data.decode('utf-8', errors='replace')
                             dfs = pd.read_html(io.StringIO(html_content), flavor=['lxml', 'bs4', 'html5lib'])
@@ -106,21 +106,16 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                         except Exception:
                             pass
                             
-                        # B. Coba baca sebagai Excel murni jika gagal
                         if df_temp is None or df_temp.empty:
                             uploaded_file.seek(0)
-                            try:
-                                df_temp = pd.read_excel(uploaded_file)
-                            except Exception:
-                                pass
+                            try: df_temp = pd.read_excel(uploaded_file)
+                            except Exception: pass
                                 
                         if df_temp is not None and not df_temp.empty:
-                            # --- SMART HEADER DETECTOR ---
                             header_found = False
                             if any("nama fasyankes" in str(c).lower() for c in df_temp.columns):
                                 header_found = True
                             else:
-                                # Scan 15 baris pertama untuk mencari Header
                                 for idx, row in df_temp.head(15).iterrows():
                                     if any("nama fasyankes" in str(val).lower() for val in row.values):
                                         df_temp.columns = row
@@ -129,7 +124,6 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                                         break
                                         
                             if header_found:
-                                # Standardisasi nama kolom secara otomatis (kebal huruf besar/kecil)
                                 rename_dict = {}
                                 for col in df_temp.columns:
                                     c_str = str(col).lower().strip()
@@ -160,8 +154,27 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                 
                 df_raw = pd.concat(data_frames, ignore_index=True)
 
-                # 2. BACA & STANDARDISASI MASTER FASYANKES
+                # -------------------------------------------------------------
+                # 2. BACA & DETEKSI HEADER MASTER FASYANKES (FITUR BARU)
+                # -------------------------------------------------------------
                 df_master = pd.read_excel(master_file)
+                
+                # Smart Header khusus untuk Master
+                header_found_master = False
+                if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
+                    header_found_master = True
+                else:
+                    for idx, row in df_master.head(15).iterrows():
+                        if any("nama fasyankes" in str(val).lower() for val in row.values):
+                            df_master.columns = row
+                            df_master = df_master.iloc[idx+1:].reset_index(drop=True)
+                            header_found_master = True
+                            break
+                            
+                if not header_found_master:
+                    st.error("❌ Gagal Menggabungkan Data: Kolom 'Nama Fasyankes' tidak terdeteksi di dalam file Master Fasyankes. Pastikan file Master valid.")
+                    st.stop()
+
                 rename_master = {}
                 for col in df_master.columns:
                     c_str = str(col).lower().strip()
@@ -169,7 +182,9 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                     elif "kode" == c_str or "kode fasyankes" in c_str: rename_master[col] = "Kode"
                 df_master = df_master.rename(columns=rename_master)
 
+                # -------------------------------------------------------------
                 # 3. PENGGABUNGAN (JOINING) AMAN
+                # -------------------------------------------------------------
                 if "Nama Fasyankes" in df_raw.columns and "Nama Fasyankes" in df_master.columns:
                     df_raw['_join_temp'] = df_raw["Nama Fasyankes"].astype(str).str.strip().str.lower()
                     df_master['_join_temp'] = df_master["Nama Fasyankes"].astype(str).str.strip().str.lower()
@@ -184,7 +199,9 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                     st.error("❌ Gagal Menggabungkan Data: Kolom Utama 'Nama Fasyankes' tidak terdeteksi.")
                     st.stop()
 
-                # 4. Fungsi Pembersih String
+                # -------------------------------------------------------------
+                # 4. FUNGSI PEMBERSIH STRING (Anti Desimal & Formula)
+                # -------------------------------------------------------------
                 def force_string(val):
                     if pd.isna(val) or val is None or str(val).lower() == 'nan': return None
                     val_str = str(val).strip()
@@ -192,7 +209,9 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                     if val_str.startswith("="): val_str = "'" + val_str
                     return val_str
 
+                # -------------------------------------------------------------
                 # 5. MAPPING KOLOM
+                # -------------------------------------------------------------
                 mapping_config = {
                     "kode_unit": ("Kode", "Teks Bersih"),
                     "nama_unit": ("Nama Fasyankes", "Teks"),
@@ -228,7 +247,9 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                         else:
                             df_final[target_key] = None
 
+                # -------------------------------------------------------------
                 # 6. ANALISIS QC
+                # -------------------------------------------------------------
                 df_tanpa_kode = pd.DataFrame()
                 if "kode_unit" in df_final.columns and "nama_unit" in df_final.columns:
                     mask_kode = df_final["kode_unit"].isna() | (df_final["kode_unit"] == "")
@@ -241,7 +262,9 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
                     cols_tgl = [c for c in ["no", "nama", "nama_unit", "jenis_tenaga", "tanggal_lahir"] if c in df_final.columns]
                     df_tanpa_tgl = df_final[mask_tgl][cols_tgl]
 
+                # -------------------------------------------------------------
                 # 7. EXPORT EXCEL
+                # -------------------------------------------------------------
                 output_buffer = io.BytesIO()
                 with pd.ExcelWriter(output_buffer, engine="openpyxl", date_format="DD-MM-YYYY", datetime_format="DD-MM-YYYY") as writer:
                     sheets_data = {"Data_Clean": df_final, "Error_Tanpa_Kode_Unit": df_tanpa_kode, "Error_Tanpa_Tgl_Lahir": df_tanpa_tgl}
@@ -278,8 +301,10 @@ if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_contai
 
                 output_buffer.seek(0)
                 
-                # HASIL
-                st.success("✨ Konsolidasi berhasil!")
+                # -------------------------------------------------------------
+                # HASIL AKHIR
+                # -------------------------------------------------------------
+                st.success("✨ Konsolidasi berhasil diproses!")
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
                 col2.metric("Fasyankes Tanpa Kode", f"{len(df_tanpa_kode)} Unit")
