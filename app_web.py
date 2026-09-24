@@ -101,7 +101,7 @@ if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=
     st.rerun()
 
 # =====================================================================
-# FUNGSI UTAMA ETL PIPELINE (DENGAN HASH UID)
+# FUNGSI UTAMA ETL PIPELINE 
 # =====================================================================
 def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_cols):
     if not files_laporan or not file_m_faskes:
@@ -170,8 +170,8 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 return
             df_raw = pd.concat(data_frames, ignore_index=True)
 
-            # TAHAP 2: BACA & JOIN MASTER FASYANKES 
-            df_master = pd.read_excel(file_m_faskes)
+            # TAHAP 2: BACA & JOIN MASTER FASYANKES (DENGAN DTYPE=STR UNTUK MENJAGA FORMAT KOORDINAT)
+            df_master = pd.read_excel(file_m_faskes, dtype=str)
             h_found = False
             if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
                 h_found = True
@@ -217,7 +217,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
 
             # TAHAP 3: BACA & JOIN MASTER SDMK 
             if mode == "lengkap":
-                df_sdmk = pd.read_excel(file_m_sdmk)
+                df_sdmk = pd.read_excel(file_m_sdmk, dtype=str)
                 r_sdmk = {}
                 for col in df_sdmk.columns:
                     c_str = str(col).lower().strip()
@@ -234,19 +234,16 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                     df_sdmk = df_sdmk.drop_duplicates(subset=['_j_sdmk'])
                     df_merged = pd.merge(df_merged, df_sdmk, on="_j_sdmk", how="left", suffixes=("", "_sdmk")).drop(columns=['_j_sdmk'])
 
-            # TAHAP 4: PEMBUATAN HASH UID (4 HURUF NAMA + HASH UNIK)
+            # TAHAP 4: PEMBUATAN HASH UID
             def generate_hash_uid(row):
                 nama_val = str(row.get("Nama Lengkap", ""))
                 clean_nama = ''.join([c for c in nama_val if c.isalpha()]).upper()
-                # Ambil 4 huruf pertama, jika kurang dari 4 huruf lengkapi dengan 'X'
                 prefix = clean_nama[:4].ljust(4, 'X')
                 
-                # Buat string unik dari gabungan Nama, Tanggal Lahir, dan NIK
                 tgl_lhr = str(row.get("Tanggal Lahir", ""))
                 nik_val = str(row.get("NIK", ""))
                 raw_string = f"{nama_val}_{tgl_lhr}_{nik_val}"
                 
-                # Hashing MD5 diambil 6 karakter pertama sebagai angka/huruf unik
                 hash_code = hashlib.md5(raw_string.encode('utf-8')).hexdigest()[:6].upper()
                 return f"{prefix}_{hash_code}"
 
@@ -356,7 +353,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             output_buffer.seek(0)
             
             # TAMPILAN HASIL
-            st.success(f"✨ Laporan {mode.title()} dengan Hash UID berhasil diproses!")
+            st.success(f"✨ Laporan {mode.title()} berhasil diproses dengan format koordinat murni!")
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
             c2.metric("Fasyankes Tanpa Kode", f"{len(df_no_kode)} Unit")
