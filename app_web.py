@@ -3,6 +3,7 @@ import pandas as pd
 import io
 import os
 import base64
+from datetime import datetime
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(
@@ -42,7 +43,6 @@ st.markdown("""
     .diy-header h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
     .diy-header p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.9; }
     hr { margin-top: 10px; margin-bottom: 10px; }
-    /* Mempercantik tampilan Tabs */
     .stTabs [data-baseweb="tab-list"] { gap: 15px; }
     .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-size: 16px; font-weight: bold; }
     </style>
@@ -70,7 +70,7 @@ else:
 st.markdown(header_html, unsafe_allow_html=True)
 
 # =====================================================================
-# SIDEBAR: HANYA UNTUK FILE UPLOAD (LEBIH BERSIH & CEPAT)
+# SIDEBAR: PANEL INPUT BERKAS
 # =====================================================================
 st.sidebar.markdown("### ⚙️ Panel Input Berkas")
 st.sidebar.markdown("---")
@@ -92,7 +92,7 @@ master_sdmk_file = st.sidebar.file_uploader(
     "⚕️ 3. Master SDMK (.xlsx)", 
     type=["xlsx"],
     key=f"mastersdmk_{st.session_state.uploader_key}",
-    help="Hanya dibutuhkan jika Anda akan memproses Mode Laporan Super Lengkap."
+    help="Hanya dibutuhkan jika Anda memproses Mode Super Lengkap."
 )
 
 if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=True):
@@ -100,10 +100,9 @@ if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=
     st.rerun()
 
 # =====================================================================
-# FUNGSI UTAMA ETL PIPELINE (Digunakan oleh kedua Tab)
+# FUNGSI UTAMA ETL PIPELINE 
 # =====================================================================
 def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_cols):
-    # Validasi awal
     if not files_laporan or not file_m_faskes:
         st.error("⚠️ Harap unggah berkas Laporan dan Master Fasyankes terlebih dahulu!")
         return
@@ -116,7 +115,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
 
     with st.spinner(f"Menjalankan Pipeline ETL ({mode.upper()})..."):
         try:
-            # TAHAP 1: BACA LAPORAN FASYANKES (DENGAN SMART HEADER)
+            # TAHAP 1: BACA LAPORAN FASYANKES (SMART HEADER)
             data_frames = []
             for up_file in files_laporan:
                 df_temp = None
@@ -170,7 +169,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 return
             df_raw = pd.concat(data_frames, ignore_index=True)
 
-            # TAHAP 2: BACA & JOIN MASTER FASYANKES (PROFIL LENGKAP)
+            # TAHAP 2: BACA & JOIN MASTER FASYANKES 
             df_master = pd.read_excel(file_m_faskes)
             h_found = False
             if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
@@ -215,7 +214,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 st.error("❌ Gagal Menggabungkan Data: Kolom 'Nama Fasyankes' hilang.")
                 return
 
-            # TAHAP 3: BACA & JOIN MASTER SDMK (HANYA MODE LENGKAP)
+            # TAHAP 3: BACA & JOIN MASTER SDMK 
             if mode == "lengkap":
                 df_sdmk = pd.read_excel(file_m_sdmk)
                 r_sdmk = {}
@@ -234,7 +233,19 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                     df_sdmk = df_sdmk.drop_duplicates(subset=['_j_sdmk'])
                     df_merged = pd.merge(df_merged, df_sdmk, on="_j_sdmk", how="left", suffixes=("", "_sdmk")).drop(columns=['_j_sdmk'])
 
-            # TAHAP 4: PEMETAAN KOLOM (MAPPING)
+            # TAHAP 4: PEMBUATAN UID (UNIQUE IDENTIFIER) & LOG TANGGAL PROSES
+            if "Nama Lengkap" in df_merged.columns and "Tanggal Lahir" in df_merged.columns:
+                clean_nama = df_merged["Nama Lengkap"].astype(str).str.replace(r'[^a-zA-Z]', '', regex=True).str.upper()
+                clean_tgl = pd.to_datetime(df_merged["Tanggal Lahir"], errors='coerce').dt.strftime('%d%m%Y').fillna('00000000')
+                df_merged["UID"] = clean_nama + "_" + clean_tgl
+            else:
+                df_merged["UID"] = None
+                
+            # Log Timestamp Otomatis saat data diproses
+            timestamp_sekarang = pd.Timestamp.now().strftime("%d-%m-%Y %H:%M")
+            df_merged["Tanggal Proses"] = timestamp_sekarang
+
+            # TAHAP 5: PEMETAAN KOLOM (MAPPING)
             def force_string(val):
                 if pd.isna(val) or val is None or str(val).lower() == 'nan': return None
                 val_str = str(val).strip()
@@ -243,7 +254,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 return val_str
 
             map_cfg = {
-                "kode_unit": ("Kode", "Teks"), "nama_unit": ("Nama Fasyankes", "Teks"), "nik": ("NIK", "Teks"),
+                "uid": ("UID", "Teks"), "kode_unit": ("Kode", "Teks"), "nama_unit": ("Nama Fasyankes", "Teks"), "nik": ("NIK", "Teks"),
                 "tanggal_lahir": ("Tanggal Lahir", "Tgl"), "nama": ("Nama Lengkap", "Teks"), "jenis_tenaga": ("Jenis Tenaga", "Teks"),
                 "status_pegawai": ("Status", "Teks"), "jenis_kelamin": ("Jenis Kelamin", "Teks"), "nomor_str": ("Nomor STR", "Teks"),
                 "status_str": ("Status STR", "Teks"), "nomor_sip": ("Nomor SIP", "Teks"),
@@ -252,7 +263,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 "kategori_sdmk": ("kategori_sdmk", "Teks"), "Alamat": ("Alamat", "Teks"), "Tipe": ("Tipe", "Teks"),
                 "Jenis": ("Jenis", "Teks"), "Tingkatan": ("Tingkatan", "Teks"), "Penyelenggara": ("Penyelenggara", "Teks"),
                 "latitude": ("latitude", "Teks"), "longitude": ("longitude", "Teks"), "desa": ("desa", "Teks"),
-                "kec": ("kec", "Teks"), "kab": ("kab", "Teks"),
+                "kec": ("kec", "Teks"), "kab": ("kab", "Teks"), "tanggal_proses": ("Tanggal Proses", "Teks"),
             }
 
             df_final = pd.DataFrame()
@@ -269,7 +280,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                     else:
                         df_final[tk] = None
 
-            # TAHAP 5: QC
+            # TAHAP 6: QUALITY CONTROL (QC)
             df_no_kode = pd.DataFrame()
             if "kode_unit" in df_final.columns and "nama_unit" in df_final.columns:
                 m_kode = df_final["kode_unit"].isna() | (df_final["kode_unit"] == "")
@@ -279,7 +290,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             if "tanggal_lahir" in df_final.columns:
                 df_no_tgl = df_final[df_final["tanggal_lahir"].isna()][[c for c in ["no","nama","nama_unit","jenis_tenaga","tanggal_lahir"] if c in df_final.columns]]
 
-            # TAHAP 6: EXCEL GENERATION
+            # TAHAP 7: EXCEL GENERATION
             output_buffer = io.BytesIO()
             with pd.ExcelWriter(output_buffer, engine="openpyxl", date_format="DD-MM-YYYY", datetime_format="DD-MM-YYYY") as writer:
                 sheets_data = {"Data_Clean": df_final, "Error_Tanpa_Kode": df_no_kode, "Error_Tanpa_Tgl_Lahir": df_no_tgl}
@@ -314,7 +325,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             output_buffer.seek(0)
             
             # TAMPILAN HASIL
-            st.success(f"✨ Laporan {mode.title()} berhasil diproses!")
+            st.success(f"✨ Laporan {mode.title()} berhasil diproses pada {timestamp_sekarang} WIB!")
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
             c2.metric("Fasyankes Tanpa Kode", f"{len(df_no_kode)} Unit")
@@ -331,10 +342,10 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             st.error(f"❌ Terjadi kesalahan teknis: {e}")
 
 # =====================================================================
-# MAIN AREA: SISTEM TABS (PERPINDAHAN 0 DETIK)
+# MAIN AREA: SISTEM TABS 
 # =====================================================================
 tab_standar, tab_lengkap = st.tabs([
-    "📊 1. MODE LAPORAN STANDAR (Versi Awal)", 
+    "📊 1. MODE LAPORAN STANDAR", 
     "🚀 2. MODE SUPER LENGKAP (SDMK + Geografis)"
 ])
 
@@ -344,14 +355,15 @@ with tab_standar:
     st.markdown("##### 📋 Sesuaikan Kolom Output")
     
     dict_standar = {
+        "uid": ("UID Pegawai (Nama+TglLahir)", True),
         "kode_unit": ("Kode Fasyankes", True), "nama_unit": ("Nama Fasyankes", True), "tanggal_lahir": ("Tanggal Lahir", True),
         "nama": ("Nama Lengkap", True), "jenis_tenaga": ("Jenis Tenaga", True), "status_pegawai": ("Status Pegawai", True),
         "jenis_kelamin": ("Jenis Kelamin", True), "nomor_str": ("Nomor STR", True), "status_str": ("Status STR", False),
         "nomor_sip": ("Nomor SIP", True), "tanggal_terbit_sip": ("Tanggal Terbit SIP", True), "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
-        "nik": ("NIK (Nomor Induk)", False) 
+        "nik": ("NIK (Nomor Induk)", False),
+        "tanggal_proses": ("Log Tanggal Proses", True) # <--- Opsi baru ditambahkan
     }
     
-    # Render Checkbox dalam bentuk Grid 3 Kolom agar rapi & compact
     selected_std = {}
     cols_std = st.columns(3)
     for i, (k, (label, default)) in enumerate(dict_standar.items()):
@@ -365,10 +377,11 @@ with tab_standar:
 
 # ----------------- KONTEN TAB 2 (SUPER LENGKAP) -----------------
 with tab_lengkap:
-    st.info("💡 **Mode Super Lengkap**: Mengintegrasikan seluruh klasifikasi Profesi SDMK beserta Profil Detail & Koordinat Fasyankes.")
+    st.info("💡 **Mode Super Lengkap**: Mengintegrasikan klasifikasi Profesi SDMK beserta Profil Detail & Koordinat Fasyankes.")
     st.markdown("##### 📋 Sesuaikan Kolom Output")
     
     dict_lengkap = {
+        "uid": ("UID Pegawai (Nama+TglLahir)", True),
         "kode_unit": ("Kode Fasyankes", True), "nama_unit": ("Nama Fasyankes", True), "tanggal_lahir": ("Tanggal Lahir", True),
         "nama": ("Nama Lengkap", True), "jenis_tenaga": ("Jenis Tenaga", True), "status_pegawai": ("Status Pegawai", True),
         "jenis_kelamin": ("Jenis Kelamin", True), "nomor_str": ("Nomor STR", True), "nomor_sip": ("Nomor SIP", True),
@@ -377,10 +390,10 @@ with tab_lengkap:
         "kategori_sdmk": ("Kategori SDMK", True), "Alamat": ("Alamat", True), "Tipe": ("Tipe Fasyankes", True),
         "Jenis": ("Jenis Fasyankes", True), "Tingkatan": ("Tingkatan", True), "Penyelenggara": ("Penyelenggara", True),
         "latitude": ("Latitude", True), "longitude": ("Longitude", True), "desa": ("Desa / Kelurahan", True),
-        "kec": ("Kecamatan", True), "kab": ("Kabupaten / Kota", True), "status_str": ("Status STR", False), "nik": ("NIK (Nomor Induk)", False)
+        "kec": ("Kecamatan", True), "kab": ("Kabupaten / Kota", True), "status_str": ("Status STR", False), "nik": ("NIK (Nomor Induk)", False),
+        "tanggal_proses": ("Log Tanggal Proses", True) # <--- Opsi baru ditambahkan
     }
     
-    # Render Checkbox dalam bentuk Grid 3 Kolom
     selected_pro = {}
     cols_pro = st.columns(3)
     for i, (k, (label, default)) in enumerate(dict_lengkap.items()):
