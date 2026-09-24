@@ -42,6 +42,9 @@ st.markdown("""
     .diy-header h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
     .diy-header p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.9; }
     hr { margin-top: 10px; margin-bottom: 10px; }
+    /* Mempercantik tampilan Tabs */
+    .stTabs [data-baseweb="tab-list"] { gap: 15px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-size: 16px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -66,375 +69,324 @@ else:
     """
 st.markdown(header_html, unsafe_allow_html=True)
 
-# --- PANEL KONTROL (SIDEBAR) ---
-st.sidebar.markdown("### 📊 1. Pilih Mode Laporan")
-jenis_laporan = st.sidebar.radio(
-    "Tentukan format luaran data:",
-    ("Laporan Standar (Versi Awal)", "Laporan Super Lengkap (SDMK + Detail Fasyankes)"),
-    help="Pilih 'Laporan Standar' untuk rekap dasar, atau 'Laporan Super Lengkap' untuk integrasi kode profesi & geografis."
-)
-
+# =====================================================================
+# SIDEBAR: HANYA UNTUK FILE UPLOAD (LEBIH BERSIH & CEPAT)
+# =====================================================================
+st.sidebar.markdown("### ⚙️ Panel Input Berkas")
 st.sidebar.markdown("---")
-st.sidebar.markdown("### ⚙️ 2. Unggah File Sumber")
 
 uploaded_files = st.sidebar.file_uploader(
-    "📄 Pilih Berkas Laporan (.xls / .html / .xlsx)", 
+    "📄 1. Laporan Fasyankes (.xls / .html)", 
     type=["xls", "html", "xlsx"], 
     accept_multiple_files=True,
     key=f"laporan_{st.session_state.uploader_key}"
 )
 
 master_file = st.sidebar.file_uploader(
-    "🏥 Pilih Master Fasyankes (.xlsx)", 
+    "🏥 2. Master Fasyankes (.xlsx)", 
     type=["xlsx"],
     key=f"master_{st.session_state.uploader_key}"
 )
 
-# Hanya tampilkan Master SDMK jika mode Super Lengkap dipilih
-master_sdmk_file = None
-if jenis_laporan == "Laporan Super Lengkap (SDMK + Detail Fasyankes)":
-    master_sdmk_file = st.sidebar.file_uploader(
-        "⚕️ Pilih Master Kode SDMK (.xlsx)", 
-        type=["xlsx"],
-        key=f"mastersdmk_{st.session_state.uploader_key}"
-    )
+master_sdmk_file = st.sidebar.file_uploader(
+    "⚕️ 3. Master SDMK (.xlsx)", 
+    type=["xlsx"],
+    key=f"mastersdmk_{st.session_state.uploader_key}",
+    help="Hanya dibutuhkan jika Anda akan memproses Mode Laporan Super Lengkap."
+)
 
 if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=True):
     reset_data()
     st.rerun()
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📋 3. Pilih Kolom Output Target")
-
-# Menentukan daftar kolom berdasarkan pilihan laporan
-if jenis_laporan == "Laporan Standar (Versi Awal)":
-    available_columns = {
-        "kode_unit": ("Kode Fasyankes", True),
-        "nama_unit": ("Nama Fasyankes", True),
-        "tanggal_lahir": ("Tanggal Lahir", True),
-        "nama": ("Nama Lengkap", True),
-        "jenis_tenaga": ("Jenis Tenaga", True),
-        "status_pegawai": ("Status Pegawai", True),
-        "jenis_kelamin": ("Jenis Kelamin", True),
-        "nomor_str": ("Nomor STR", True),
-        "status_str": ("Status STR", False),
-        "nomor_sip": ("Nomor SIP", True),
-        "tanggal_terbit_sip": ("Tanggal Terbit SIP", True),
-        "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
-        "nik": ("NIK (Nomor Induk)", False) 
-    }
-else:
-    available_columns = {
-        "kode_unit": ("Kode Fasyankes", True),
-        "nama_unit": ("Nama Fasyankes", True),
-        "tanggal_lahir": ("Tanggal Lahir", True),
-        "nama": ("Nama Lengkap", True),
-        "jenis_tenaga": ("Jenis Tenaga", True),
-        "status_pegawai": ("Status Pegawai", True),
-        "jenis_kelamin": ("Jenis Kelamin", True),
-        "nomor_str": ("Nomor STR", True),
-        "nomor_sip": ("Nomor SIP", True),
-        "tanggal_terbit_sip": ("Tanggal Terbit SIP", True),
-        "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
-        "Tenaga": ("Tenaga (SDMK)", True),
-        "subrumpun_sdmk": ("Subrumpun SDMK", True),
-        "rumpun_sdmk": ("Rumpun SDMK", True),
-        "kategori_sdmk": ("Kategori SDMK", True),
-        "Alamat": ("Alamat", True),
-        "Tipe": ("Tipe Fasyankes", True),
-        "Jenis": ("Jenis Fasyankes", True),
-        "Tingkatan": ("Tingkatan", True),
-        "Penyelenggara": ("Penyelenggara", True),
-        "latitude": ("Latitude", True),
-        "longitude": ("Longitude", True),
-        "desa": ("Desa / Kelurahan", True),
-        "kec": ("Kecamatan", True),
-        "kab": ("Kabupaten / Kota", True),
-        "status_str": ("Status STR", False),
-        "nik": ("NIK (Nomor Induk)", False)
-    }
-
-selected_target_cols = {}
-for col_key, (col_label, default_val) in available_columns.items():
-    if st.sidebar.checkbox(col_label, value=default_val):
-        selected_target_cols[col_key] = col_label
-
-# --- PROSES UTAMA ---
-if st.button("🚀 GABUNGKAN & PROSES DATA SEKARANG", type="primary", use_container_width=True):
-    # Validasi kelengkapan file
-    if not uploaded_files or not master_file:
+# =====================================================================
+# FUNGSI UTAMA ETL PIPELINE (Digunakan oleh kedua Tab)
+# =====================================================================
+def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_cols):
+    # Validasi awal
+    if not files_laporan or not file_m_faskes:
         st.error("⚠️ Harap unggah berkas Laporan dan Master Fasyankes terlebih dahulu!")
-    elif jenis_laporan == "Laporan Super Lengkap (SDMK + Detail Fasyankes)" and not master_sdmk_file:
-        st.error("⚠️ Untuk Mode Lengkap, berkas Master Kode SDMK Wajib Diunggah!")
-    elif not selected_target_cols:
-        st.error("⚠️ Pilih minimal satu kolom target output di panel samping!")
-    else:
-        with st.spinner(f"Menjalankan Pipeline {jenis_laporan}..."):
-            try:
-                # =============================================================
-                # TAHAP 1: BACA & DETEKSI HEADER LAPORAN FASYANKES
-                # =============================================================
-                data_frames = []
-                for uploaded_file in uploaded_files:
-                    df_temp = None
+        return
+    if mode == "lengkap" and not file_m_sdmk:
+        st.error("⚠️ Untuk Mode Lengkap, berkas Master Kode SDMK Wajib Diunggah di panel samping!")
+        return
+    if not target_cols:
+        st.error("⚠️ Pilih minimal satu kolom target output!")
+        return
+
+    with st.spinner(f"Menjalankan Pipeline ETL ({mode.upper()})..."):
+        try:
+            # TAHAP 1: BACA LAPORAN FASYANKES (DENGAN SMART HEADER)
+            data_frames = []
+            for up_file in files_laporan:
+                df_temp = None
+                try:
+                    bytes_data = up_file.getvalue()
                     try:
-                        bytes_data = uploaded_file.getvalue()
-                        try:
-                            html_content = bytes_data.decode('utf-8', errors='replace')
-                            dfs = pd.read_html(io.StringIO(html_content), flavor=['lxml', 'bs4', 'html5lib'])
-                            if len(dfs) > 0: df_temp = dfs[0]
+                        html_content = bytes_data.decode('utf-8', errors='replace')
+                        dfs = pd.read_html(io.StringIO(html_content), flavor=['lxml', 'bs4', 'html5lib'])
+                        if len(dfs) > 0: df_temp = dfs[0]
+                    except Exception: pass
+                        
+                    if df_temp is None or df_temp.empty:
+                        up_file.seek(0)
+                        try: df_temp = pd.read_excel(up_file)
                         except Exception: pass
                             
-                        if df_temp is None or df_temp.empty:
-                            uploaded_file.seek(0)
-                            try: df_temp = pd.read_excel(uploaded_file)
-                            except Exception: pass
-                                
-                        if df_temp is not None and not df_temp.empty:
-                            header_found = False
-                            if any("nama fasyankes" in str(c).lower() for c in df_temp.columns):
-                                header_found = True
-                            else:
-                                for idx, row in df_temp.head(15).iterrows():
-                                    if any("nama fasyankes" in str(val).lower() for val in row.values):
-                                        df_temp.columns = row
-                                        df_temp = df_temp.iloc[idx+1:].reset_index(drop=True)
-                                        header_found = True
-                                        break
-                                        
-                            if header_found:
-                                rename_dict = {}
-                                for col in df_temp.columns:
-                                    c_str = str(col).lower().strip()
-                                    if "nama fasyankes" in c_str: rename_dict[col] = "Nama Fasyankes"
-                                    elif c_str == "nik": rename_dict[col] = "NIK"
-                                    elif "tanggal lahir" in c_str: rename_dict[col] = "Tanggal Lahir"
-                                    elif "nama lengkap" in c_str: rename_dict[col] = "Nama Lengkap"
-                                    elif "jenis tenaga" in c_str: rename_dict[col] = "Jenis Tenaga"
-                                    elif c_str == "status": rename_dict[col] = "Status"
-                                    elif "jenis kelamin" in c_str: rename_dict[col] = "Jenis Kelamin"
-                                    elif "nomor str" in c_str: rename_dict[col] = "Nomor STR"
-                                    elif "status str" in c_str: rename_dict[col] = "Status STR"
-                                    elif "nomor sip" in c_str: rename_dict[col] = "Nomor SIP"
-                                    elif "tanggal terbit sip" in c_str: rename_dict[col] = "Tanggal Terbit SIP"
-                                    elif "tanggal berakhir sip" in c_str: rename_dict[col] = "Tanggal Berakhir SIP"
-                                df_temp = df_temp.rename(columns=rename_dict)
-                                data_frames.append(df_temp)
-                            else:
-                                st.warning(f"⚠️ Berkas '{uploaded_file.name}' dilewati: Kolom 'Nama Fasyankes' tidak ditemukan.")
+                    if df_temp is not None and not df_temp.empty:
+                        header_found = False
+                        if any("nama fasyankes" in str(c).lower() for c in df_temp.columns):
+                            header_found = True
                         else:
-                            st.warning(f"⚠️ Berkas '{uploaded_file.name}' kosong atau rusak.")
-                    except Exception as e:
-                        st.warning(f"⚠️ Gagal membaca berkas '{uploaded_file.name}': {e}")
+                            for idx, row in df_temp.head(15).iterrows():
+                                if any("nama fasyankes" in str(val).lower() for val in row.values):
+                                    df_temp.columns = row
+                                    df_temp = df_temp.iloc[idx+1:].reset_index(drop=True)
+                                    header_found = True
+                                    break
+                                    
+                        if header_found:
+                            rename_dict = {}
+                            for col in df_temp.columns:
+                                c_str = str(col).lower().strip()
+                                if "nama fasyankes" in c_str: rename_dict[col] = "Nama Fasyankes"
+                                elif c_str == "nik": rename_dict[col] = "NIK"
+                                elif "tanggal lahir" in c_str: rename_dict[col] = "Tanggal Lahir"
+                                elif "nama lengkap" in c_str: rename_dict[col] = "Nama Lengkap"
+                                elif "jenis tenaga" in c_str: rename_dict[col] = "Jenis Tenaga"
+                                elif c_str == "status": rename_dict[col] = "Status"
+                                elif "jenis kelamin" in c_str: rename_dict[col] = "Jenis Kelamin"
+                                elif "nomor str" in c_str: rename_dict[col] = "Nomor STR"
+                                elif "status str" in c_str: rename_dict[col] = "Status STR"
+                                elif "nomor sip" in c_str: rename_dict[col] = "Nomor SIP"
+                                elif "tanggal terbit sip" in c_str: rename_dict[col] = "Tanggal Terbit SIP"
+                                elif "tanggal berakhir sip" in c_str: rename_dict[col] = "Tanggal Berakhir SIP"
+                            df_temp = df_temp.rename(columns=rename_dict)
+                            data_frames.append(df_temp)
+                except Exception: pass
 
-                if not data_frames:
-                    st.error("❌ Seluruh berkas dilewati karena format tidak dikenali/kosong.")
-                    st.stop()
-                
-                df_raw = pd.concat(data_frames, ignore_index=True)
+            if not data_frames:
+                st.error("❌ Seluruh berkas dilewati karena format tidak dikenali/kosong.")
+                return
+            df_raw = pd.concat(data_frames, ignore_index=True)
 
-                # =============================================================
-                # TAHAP 2: BACA & JOIN MASTER FASYANKES (Ekspansi Kolom Profil)
-                # =============================================================
-                df_master = pd.read_excel(master_file)
-                header_found_master = False
-                if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
-                    header_found_master = True
-                else:
-                    for idx, row in df_master.head(15).iterrows():
-                        if any("nama fasyankes" in str(val).lower() for val in row.values):
-                            df_master.columns = row
-                            df_master = df_master.iloc[idx+1:].reset_index(drop=True)
-                            header_found_master = True
-                            break
-                            
-                if not header_found_master:
-                    st.error("❌ Gagal: Kolom 'Nama Fasyankes' tidak terdeteksi di Master Fasyankes.")
-                    st.stop()
-
-                rename_master = {}
-                for col in df_master.columns:
-                    c_str = str(col).lower().strip()
-                    if "nama fasyankes" in c_str: rename_master[col] = "Nama Fasyankes"
-                    elif "kode" == c_str or "kode fasyankes" in c_str: rename_master[col] = "Kode"
-                    # Deteksi kolom profil geografis
-                    elif c_str == "alamat": rename_master[col] = "Alamat"
-                    elif c_str == "tipe": rename_master[col] = "Tipe"
-                    elif c_str == "jenis": rename_master[col] = "Jenis"
-                    elif c_str == "tingkatan": rename_master[col] = "Tingkatan"
-                    elif c_str == "penyelenggara": rename_master[col] = "Penyelenggara"
-                    elif "lat" in c_str: rename_master[col] = "latitude"
-                    elif "long" in c_str: rename_master[col] = "longitude"
-                    elif "desa" in c_str or "kelurahan" in c_str: rename_master[col] = "desa"
-                    elif "kec" in c_str: rename_master[col] = "kec"
-                    elif "kab" in c_str or "kota" in c_str: rename_master[col] = "kab"
-
-                df_master = df_master.rename(columns=rename_master)
-
-                if "Nama Fasyankes" in df_raw.columns and "Nama Fasyankes" in df_master.columns:
-                    df_raw['_join_temp'] = df_raw["Nama Fasyankes"].astype(str).str.strip().str.lower()
-                    df_master['_join_temp'] = df_master["Nama Fasyankes"].astype(str).str.strip().str.lower()
-                    df_master = df_master.drop_duplicates(subset=['_join_temp'])
-                    df_merged = pd.merge(df_raw, df_master, on="_join_temp", how="left", suffixes=("", "_master"))
-                    df_merged = df_merged.drop(columns=['_join_temp'])
-                    if "Nama Fasyankes_master" in df_merged.columns:
-                        df_merged["Nama Fasyankes"] = df_merged["Nama Fasyankes_master"].fillna(df_merged["Nama Fasyankes"])
-                else:
-                    st.error("❌ Gagal Menggabungkan Data: Kolom 'Nama Fasyankes' hilang.")
-                    st.stop()
-
-                # =============================================================
-                # TAHAP 3: BACA & JOIN MASTER KODE SDMK (Opsional Mode Lengkap)
-                # =============================================================
-                if jenis_laporan == "Laporan Super Lengkap (SDMK + Detail Fasyankes)":
-                    df_master_sdmk = pd.read_excel(master_sdmk_file)
-                    
-                    rename_sdmk = {}
-                    for col in df_master_sdmk.columns:
-                        c_str = str(col).lower().strip()
-                        if c_str == "jenis tenaga": rename_sdmk[col] = "Jenis Tenaga"
-                        elif c_str == "tenaga": rename_sdmk[col] = "Tenaga"
-                        elif c_str == "subrumpun_sdmk" or c_str == "subrumpun sdmk": rename_sdmk[col] = "subrumpun_sdmk"
-                        elif c_str == "rumpun_sdmk" or c_str == "rumpun sdmk": rename_sdmk[col] = "rumpun_sdmk"
-                        elif c_str == "kategori_sdmk" or c_str == "kategori sdmk": rename_sdmk[col] = "kategori_sdmk"
-                    df_master_sdmk = df_master_sdmk.rename(columns=rename_sdmk)
-
-                    if "Jenis Tenaga" in df_merged.columns and "Jenis Tenaga" in df_master_sdmk.columns:
-                        df_merged['_join_sdmk'] = df_merged["Jenis Tenaga"].astype(str).str.strip().str.lower()
-                        df_master_sdmk['_join_sdmk'] = df_master_sdmk["Jenis Tenaga"].astype(str).str.strip().str.lower()
-                        df_master_sdmk = df_master_sdmk.drop_duplicates(subset=['_join_sdmk'])
+            # TAHAP 2: BACA & JOIN MASTER FASYANKES (PROFIL LENGKAP)
+            df_master = pd.read_excel(file_m_faskes)
+            h_found = False
+            if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
+                h_found = True
+            else:
+                for idx, row in df_master.head(15).iterrows():
+                    if any("nama fasyankes" in str(val).lower() for val in row.values):
+                        df_master.columns = row
+                        df_master = df_master.iloc[idx+1:].reset_index(drop=True)
+                        h_found = True
+                        break
                         
-                        df_merged = pd.merge(df_merged, df_master_sdmk, on="_join_sdmk", how="left", suffixes=("", "_sdmk"))
-                        df_merged = df_merged.drop(columns=['_join_sdmk'])
+            if not h_found:
+                st.error("❌ Gagal: Kolom 'Nama Fasyankes' tidak terdeteksi di Master Fasyankes.")
+                return
+
+            r_master = {}
+            for col in df_master.columns:
+                c_str = str(col).lower().strip()
+                if "nama fasyankes" in c_str: r_master[col] = "Nama Fasyankes"
+                elif "kode" == c_str or "kode fasyankes" in c_str: r_master[col] = "Kode"
+                elif c_str == "alamat": r_master[col] = "Alamat"
+                elif c_str == "tipe": r_master[col] = "Tipe"
+                elif c_str == "jenis": r_master[col] = "Jenis"
+                elif c_str == "tingkatan": r_master[col] = "Tingkatan"
+                elif c_str == "penyelenggara": r_master[col] = "Penyelenggara"
+                elif "lat" in c_str: r_master[col] = "latitude"
+                elif "long" in c_str: r_master[col] = "longitude"
+                elif "desa" in c_str or "kelurahan" in c_str: r_master[col] = "desa"
+                elif "kec" in c_str: r_master[col] = "kec"
+                elif "kab" in c_str or "kota" in c_str: r_master[col] = "kab"
+            df_master = df_master.rename(columns=r_master)
+
+            if "Nama Fasyankes" in df_raw.columns and "Nama Fasyankes" in df_master.columns:
+                df_raw['_j'] = df_raw["Nama Fasyankes"].astype(str).str.strip().str.lower()
+                df_master['_j'] = df_master["Nama Fasyankes"].astype(str).str.strip().str.lower()
+                df_master = df_master.drop_duplicates(subset=['_j'])
+                df_merged = pd.merge(df_raw, df_master, on="_j", how="left", suffixes=("", "_master")).drop(columns=['_j'])
+                if "Nama Fasyankes_master" in df_merged.columns:
+                    df_merged["Nama Fasyankes"] = df_merged["Nama Fasyankes_master"].fillna(df_merged["Nama Fasyankes"])
+            else:
+                st.error("❌ Gagal Menggabungkan Data: Kolom 'Nama Fasyankes' hilang.")
+                return
+
+            # TAHAP 3: BACA & JOIN MASTER SDMK (HANYA MODE LENGKAP)
+            if mode == "lengkap":
+                df_sdmk = pd.read_excel(file_m_sdmk)
+                r_sdmk = {}
+                for col in df_sdmk.columns:
+                    c_str = str(col).lower().strip()
+                    if c_str == "jenis tenaga": r_sdmk[col] = "Jenis Tenaga"
+                    elif c_str == "tenaga": r_sdmk[col] = "Tenaga"
+                    elif c_str == "subrumpun_sdmk" or c_str == "subrumpun sdmk": r_sdmk[col] = "subrumpun_sdmk"
+                    elif c_str == "rumpun_sdmk" or c_str == "rumpun sdmk": r_sdmk[col] = "rumpun_sdmk"
+                    elif c_str == "kategori_sdmk" or c_str == "kategori sdmk": r_sdmk[col] = "kategori_sdmk"
+                df_sdmk = df_sdmk.rename(columns=r_sdmk)
+
+                if "Jenis Tenaga" in df_merged.columns and "Jenis Tenaga" in df_sdmk.columns:
+                    df_merged['_j_sdmk'] = df_merged["Jenis Tenaga"].astype(str).str.strip().str.lower()
+                    df_sdmk['_j_sdmk'] = df_sdmk["Jenis Tenaga"].astype(str).str.strip().str.lower()
+                    df_sdmk = df_sdmk.drop_duplicates(subset=['_j_sdmk'])
+                    df_merged = pd.merge(df_merged, df_sdmk, on="_j_sdmk", how="left", suffixes=("", "_sdmk")).drop(columns=['_j_sdmk'])
+
+            # TAHAP 4: PEMETAAN KOLOM (MAPPING)
+            def force_string(val):
+                if pd.isna(val) or val is None or str(val).lower() == 'nan': return None
+                val_str = str(val).strip()
+                if val_str.endswith(".0"): val_str = val_str[:-2]
+                if val_str.startswith("="): val_str = "'" + val_str
+                return val_str
+
+            map_cfg = {
+                "kode_unit": ("Kode", "Teks"), "nama_unit": ("Nama Fasyankes", "Teks"), "nik": ("NIK", "Teks"),
+                "tanggal_lahir": ("Tanggal Lahir", "Tgl"), "nama": ("Nama Lengkap", "Teks"), "jenis_tenaga": ("Jenis Tenaga", "Teks"),
+                "status_pegawai": ("Status", "Teks"), "jenis_kelamin": ("Jenis Kelamin", "Teks"), "nomor_str": ("Nomor STR", "Teks"),
+                "status_str": ("Status STR", "Teks"), "nomor_sip": ("Nomor SIP", "Teks"),
+                "tanggal_terbit_sip": ("Tanggal Terbit SIP", "Tgl"), "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", "Tgl"),
+                "Tenaga": ("Tenaga", "Teks"), "subrumpun_sdmk": ("subrumpun_sdmk", "Teks"), "rumpun_sdmk": ("rumpun_sdmk", "Teks"),
+                "kategori_sdmk": ("kategori_sdmk", "Teks"), "Alamat": ("Alamat", "Teks"), "Tipe": ("Tipe", "Teks"),
+                "Jenis": ("Jenis", "Teks"), "Tingkatan": ("Tingkatan", "Teks"), "Penyelenggara": ("Penyelenggara", "Teks"),
+                "latitude": ("latitude", "Teks"), "longitude": ("longitude", "Teks"), "desa": ("desa", "Teks"),
+                "kec": ("kec", "Teks"), "kab": ("kab", "Teks"),
+            }
+
+            df_final = pd.DataFrame()
+            df_final["no"] = range(1, len(df_merged) + 1)
+            t_to_type = {}
+
+            for tk in target_cols.keys():
+                if tk in map_cfg:
+                    asal, tipe = map_cfg[tk]
+                    t_to_type[tk] = tipe
+                    if asal in df_merged.columns:
+                        if tipe == "Tgl": df_final[tk] = pd.to_datetime(df_merged[asal], errors="coerce")
+                        else: df_final[tk] = df_merged[asal].apply(force_string)
                     else:
-                        st.warning("⚠️ Kolom 'Jenis Tenaga' tidak ditemukan di laporan. Atribut SDMK mungkin kosong.")
+                        df_final[tk] = None
 
-                # =============================================================
-                # TAHAP 4: PEMETAAN & FORMATTING FINAL
-                # =============================================================
-                def force_string(val):
-                    if pd.isna(val) or val is None or str(val).lower() == 'nan': return None
-                    val_str = str(val).strip()
-                    if val_str.endswith(".0"): val_str = val_str[:-2]
-                    if val_str.startswith("="): val_str = "'" + val_str
-                    return val_str
+            # TAHAP 5: QC
+            df_no_kode = pd.DataFrame()
+            if "kode_unit" in df_final.columns and "nama_unit" in df_final.columns:
+                m_kode = df_final["kode_unit"].isna() | (df_final["kode_unit"] == "")
+                df_no_kode = pd.DataFrame({"Nama_Fasyankes_Tanpa_Kode": sorted(df_final[m_kode]["nama_unit"].dropna().unique())})
+            
+            df_no_tgl = pd.DataFrame()
+            if "tanggal_lahir" in df_final.columns:
+                df_no_tgl = df_final[df_final["tanggal_lahir"].isna()][[c for c in ["no","nama","nama_unit","jenis_tenaga","tanggal_lahir"] if c in df_final.columns]]
 
-                mapping_config = {
-                    "kode_unit": ("Kode", "Teks Bersih"),
-                    "nama_unit": ("Nama Fasyankes", "Teks"),
-                    "nik": ("NIK", "Teks Bersih"),
-                    "tanggal_lahir": ("Tanggal Lahir", "Tanggal (DD-MM-YYYY)"),
-                    "nama": ("Nama Lengkap", "Teks"),
-                    "jenis_tenaga": ("Jenis Tenaga", "Teks"),
-                    "status_pegawai": ("Status", "Teks"),
-                    "jenis_kelamin": ("Jenis Kelamin", "Teks"),
-                    "nomor_str": ("Nomor STR", "Teks Bersih"),
-                    "status_str": ("Status STR", "Teks"),
-                    "nomor_sip": ("Nomor SIP", "Teks Bersih"),
-                    "tanggal_terbit_sip": ("Tanggal Terbit SIP", "Tanggal (DD-MM-YYYY)"),
-                    "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", "Tanggal (DD-MM-YYYY)"),
-                    # --- Mapping SDMK ---
-                    "Tenaga": ("Tenaga", "Teks"),
-                    "subrumpun_sdmk": ("subrumpun_sdmk", "Teks"),
-                    "rumpun_sdmk": ("rumpun_sdmk", "Teks"),
-                    "kategori_sdmk": ("kategori_sdmk", "Teks"),
-                    # --- Mapping Fasyankes Detail ---
-                    "Alamat": ("Alamat", "Teks"),
-                    "Tipe": ("Tipe", "Teks"),
-                    "Jenis": ("Jenis", "Teks"),
-                    "Tingkatan": ("Tingkatan", "Teks"),
-                    "Penyelenggara": ("Penyelenggara", "Teks"),
-                    "latitude": ("latitude", "Teks"), # Disimpan sbg Teks agar tidak corrupt
-                    "longitude": ("longitude", "Teks"),
-                    "desa": ("desa", "Teks"),
-                    "kec": ("kec", "Teks"),
-                    "kab": ("kab", "Teks"),
-                }
-
-                df_final = pd.DataFrame()
-                df_final["no"] = range(1, len(df_merged) + 1)
-                target_to_tipe = {}
-
-                for target_key in selected_target_cols.keys():
-                    if target_key in mapping_config:
-                        asal, tipe = mapping_config[target_key]
-                        target_to_tipe[target_key] = tipe
-
-                        if asal in df_merged.columns:
-                            if tipe == "Tanggal (DD-MM-YYYY)":
-                                df_final[target_key] = pd.to_datetime(df_merged[asal], errors="coerce")
-                            elif tipe == "Angka":
-                                df_final[target_key] = pd.to_numeric(df_merged[asal], errors="coerce")
-                            else:
-                                df_final[target_key] = df_merged[asal].apply(force_string)
-                        else:
-                            df_final[target_key] = None # Fail-safe jika kolom master tidak lengkap
-
-                # =============================================================
-                # TAHAP 5: ANALISIS QUALITY CONTROL
-                # =============================================================
-                df_tanpa_kode = pd.DataFrame()
-                if "kode_unit" in df_final.columns and "nama_unit" in df_final.columns:
-                    mask_kode = df_final["kode_unit"].isna() | (df_final["kode_unit"] == "")
-                    faskes_list = df_final[mask_kode]["nama_unit"].dropna().unique()
-                    df_tanpa_kode = pd.DataFrame({"Nama_Fasyankes_Tanpa_Kode": sorted(faskes_list)})
-
-                df_tanpa_tgl = pd.DataFrame()
-                if "tanggal_lahir" in df_final.columns:
-                    mask_tgl = df_final["tanggal_lahir"].isna()
-                    cols_tgl = [c for c in ["no", "nama", "nama_unit", "jenis_tenaga", "tanggal_lahir"] if c in df_final.columns]
-                    df_tanpa_tgl = df_final[mask_tgl][cols_tgl]
-
-                # =============================================================
-                # TAHAP 6: GENERATE EXCEL PRO (AUTO-FIT)
-                # =============================================================
-                output_buffer = io.BytesIO()
-                with pd.ExcelWriter(output_buffer, engine="openpyxl", date_format="DD-MM-YYYY", datetime_format="DD-MM-YYYY") as writer:
-                    sheets_data = {"Data_Clean": df_final, "Error_Tanpa_Kode_Unit": df_tanpa_kode, "Error_Tanpa_Tgl_Lahir": df_tanpa_tgl}
-                    
-                    for s_name, dframe in sheets_data.items():
-                        if not dframe.empty: dframe.to_excel(writer, sheet_name=s_name, index=False)
-                    
-                    wb = writer.book
-                    if "Data_Clean" in wb.sheetnames:
-                        ws = wb["Data_Clean"]
-                        for col in ws.iter_cols(min_row=2):
-                            c_name = ws.cell(row=1, column=col[0].column).value
-                            t_aturan = target_to_tipe.get(c_name, "Teks") if c_name != "no" else "Angka"
-                            if t_aturan == "Tanggal (DD-MM-YYYY)":
-                                for cell in col:
-                                    if cell.value: cell.number_format = "DD-MM-YYYY"
-                            elif t_aturan == "Angka":
-                                for cell in col:
-                                    if cell.value: cell.number_format = "0"
-                            else:
-                                for cell in col:
-                                    if cell.value: cell.number_format = '@'
-
-                    for s_name in wb.sheetnames:
-                        worksheet = wb[s_name]
-                        for col in worksheet.columns:
-                            max_len = 0
-                            col_let = col[0].column_letter
+            # TAHAP 6: EXCEL GENERATION
+            output_buffer = io.BytesIO()
+            with pd.ExcelWriter(output_buffer, engine="openpyxl", date_format="DD-MM-YYYY", datetime_format="DD-MM-YYYY") as writer:
+                sheets_data = {"Data_Clean": df_final, "Error_Tanpa_Kode": df_no_kode, "Error_Tanpa_Tgl_Lahir": df_no_tgl}
+                for s_name, dframe in sheets_data.items():
+                    if not dframe.empty: dframe.to_excel(writer, sheet_name=s_name, index=False)
+                
+                wb = writer.book
+                if "Data_Clean" in wb.sheetnames:
+                    ws = wb["Data_Clean"]
+                    for col in ws.iter_cols(min_row=2):
+                        c_name = ws.cell(row=1, column=col[0].column).value
+                        if t_to_type.get(c_name, "Teks") == "Tgl":
                             for cell in col:
-                                try:
-                                    if cell.value and len(str(cell.value)) > max_len: max_len = len(str(cell.value))
-                                except: pass
-                            worksheet.column_dimensions[col_let].width = max(max_len + 4, 12)
+                                if cell.value: cell.number_format = "DD-MM-YYYY"
+                        elif c_name == "no":
+                            for cell in col:
+                                if cell.value: cell.number_format = "0"
+                        else:
+                            for cell in col:
+                                if cell.value: cell.number_format = '@'
 
-                output_buffer.seek(0)
-                
-                # =============================================================
-                # TAHAP 7: TAMPILAN HASIL AKHIR
-                # =============================================================
-                st.success(f"✨ {jenis_laporan} berhasil diproses!")
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
-                col2.metric("Fasyankes Tanpa Kode", f"{len(df_tanpa_kode)} Unit")
-                col3.metric("Pegawai Tanpa Tgl Lahir", f"{len(df_tanpa_tgl)} Orang")
-                
-                st.markdown("---")
-                st.download_button("📥 Unduh File Excel Profesional", data=output_buffer, file_name="Data_Pegawai_Final_DIY.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                for s_name in wb.sheetnames:
+                    worksheet = wb[s_name]
+                    for col in worksheet.columns:
+                        max_len = 0
+                        col_let = col[0].column_letter
+                        for cell in col:
+                            try:
+                                if cell.value and len(str(cell.value)) > max_len: max_len = len(str(cell.value))
+                            except: pass
+                        worksheet.column_dimensions[col_let].width = max(max_len + 4, 12)
+            output_buffer.seek(0)
+            
+            # TAMPILAN HASIL
+            st.success(f"✨ Laporan {mode.title()} berhasil diproses!")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
+            c2.metric("Fasyankes Tanpa Kode", f"{len(df_no_kode)} Unit")
+            c3.metric("Pegawai Tanpa Tgl Lahir", f"{len(df_no_tgl)} Orang")
+            st.markdown("---")
+            st.download_button(
+                label=f"📥 Unduh File Excel ({mode.title()})", 
+                data=output_buffer, 
+                file_name=f"Data_Pegawai_{mode.title()}_DIY.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"❌ Terjadi kesalahan teknis: {e}")
 
-            except Exception as e:
-                st.error(f"❌ Terjadi kesalahan teknis: {e}")
+# =====================================================================
+# MAIN AREA: SISTEM TABS (PERPINDAHAN 0 DETIK)
+# =====================================================================
+tab_standar, tab_lengkap = st.tabs([
+    "📊 1. MODE LAPORAN STANDAR (Versi Awal)", 
+    "🚀 2. MODE SUPER LENGKAP (SDMK + Geografis)"
+])
+
+# ----------------- KONTEN TAB 1 (STANDAR) -----------------
+with tab_standar:
+    st.info("💡 **Mode Laporan Standar**: Menghasilkan data rekapitulasi dasar pegawai dan unit fasyankes.")
+    st.markdown("##### 📋 Sesuaikan Kolom Output")
+    
+    dict_standar = {
+        "kode_unit": ("Kode Fasyankes", True), "nama_unit": ("Nama Fasyankes", True), "tanggal_lahir": ("Tanggal Lahir", True),
+        "nama": ("Nama Lengkap", True), "jenis_tenaga": ("Jenis Tenaga", True), "status_pegawai": ("Status Pegawai", True),
+        "jenis_kelamin": ("Jenis Kelamin", True), "nomor_str": ("Nomor STR", True), "status_str": ("Status STR", False),
+        "nomor_sip": ("Nomor SIP", True), "tanggal_terbit_sip": ("Tanggal Terbit SIP", True), "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
+        "nik": ("NIK (Nomor Induk)", False) 
+    }
+    
+    # Render Checkbox dalam bentuk Grid 3 Kolom agar rapi & compact
+    selected_std = {}
+    cols_std = st.columns(3)
+    for i, (k, (label, default)) in enumerate(dict_standar.items()):
+        if cols_std[i % 3].checkbox(label, value=default, key=f"std_{k}"):
+            selected_std[k] = label
+            
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🔄 GABUNGKAN & PROSES (MODE STANDAR)", type="primary", use_container_width=True):
+        jalankan_pipeline("standar", uploaded_files, master_file, None, selected_std)
+
+
+# ----------------- KONTEN TAB 2 (SUPER LENGKAP) -----------------
+with tab_lengkap:
+    st.info("💡 **Mode Super Lengkap**: Mengintegrasikan seluruh klasifikasi Profesi SDMK beserta Profil Detail & Koordinat Fasyankes.")
+    st.markdown("##### 📋 Sesuaikan Kolom Output")
+    
+    dict_lengkap = {
+        "kode_unit": ("Kode Fasyankes", True), "nama_unit": ("Nama Fasyankes", True), "tanggal_lahir": ("Tanggal Lahir", True),
+        "nama": ("Nama Lengkap", True), "jenis_tenaga": ("Jenis Tenaga", True), "status_pegawai": ("Status Pegawai", True),
+        "jenis_kelamin": ("Jenis Kelamin", True), "nomor_str": ("Nomor STR", True), "nomor_sip": ("Nomor SIP", True),
+        "tanggal_terbit_sip": ("Tanggal Terbit SIP", True), "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
+        "Tenaga": ("Tenaga (SDMK)", True), "subrumpun_sdmk": ("Subrumpun SDMK", True), "rumpun_sdmk": ("Rumpun SDMK", True),
+        "kategori_sdmk": ("Kategori SDMK", True), "Alamat": ("Alamat", True), "Tipe": ("Tipe Fasyankes", True),
+        "Jenis": ("Jenis Fasyankes", True), "Tingkatan": ("Tingkatan", True), "Penyelenggara": ("Penyelenggara", True),
+        "latitude": ("Latitude", True), "longitude": ("Longitude", True), "desa": ("Desa / Kelurahan", True),
+        "kec": ("Kecamatan", True), "kab": ("Kabupaten / Kota", True), "status_str": ("Status STR", False), "nik": ("NIK (Nomor Induk)", False)
+    }
+    
+    # Render Checkbox dalam bentuk Grid 3 Kolom
+    selected_pro = {}
+    cols_pro = st.columns(3)
+    for i, (k, (label, default)) in enumerate(dict_lengkap.items()):
+        if cols_pro[i % 3].checkbox(label, value=default, key=f"pro_{k}"):
+            selected_pro[k] = label
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🚀 GABUNGKAN & PROSES (MODE SUPER LENGKAP)", type="primary", use_container_width=True):
+        jalankan_pipeline("lengkap", uploaded_files, master_file, master_sdmk_file, selected_pro)
