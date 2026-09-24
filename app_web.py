@@ -18,6 +18,40 @@ if "uploader_key" not in st.session_state:
 def reset_data():
     st.session_state.uploader_key += 1
 
+# --- INISIALISASI SESSION STATE UNTUK MAPPING KOLOM DINAMIS ---
+if "mapping_df" not in st.session_state:
+    default_mapping = [
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "Kode", "Kolom Target": "kode_unit", "Tipe Format": "Teks Bersih"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Nama Fasyankes", "Kolom Target": "nama_unit", "Tipe Format": "Teks"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "NIK", "Kolom Target": "nik", "Tipe Format": "Teks Bersih"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Tanggal Lahir", "Kolom Target": "tanggal_lahir", "Tipe Format": "Tanggal (DD-MM-YYYY)"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Nama Lengkap", "Kolom Target": "nama", "Tipe Format": "Teks"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Jenis Tenaga", "Kolom Target": "jenis_tenaga", "Tipe Format": "Teks"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Status", "Kolom Target": "status_pegawai", "Tipe Format": "Teks"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Jenis Kelamin", "Kolom Target": "jenis_kelamin", "Tipe Format": "Teks"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Nomor STR", "Kolom Target": "nomor_str", "Tipe Format": "Teks Bersih"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Status STR", "Kolom Target": "status_str", "Tipe Format": "Teks"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Nomor SIP", "Kolom Target": "nomor_sip", "Tipe Format": "Teks Bersih"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Tanggal Terbit SIP", "Kolom Target": "tanggal_terbit_sip", "Tipe Format": "Tanggal (DD-MM-YYYY)"},
+        {"Sumber": "Laporan Fasyankes", "Kolom Asal": "Tanggal Berakhir SIP", "Kolom Target": "tanggal_berakhir_sip", "Tipe Format": "Tanggal (DD-MM-YYYY)"},
+        # --- Atribut Master SDMK & Profil Fasyankes ---
+        {"Sumber": "Master SDMK", "Kolom Asal": "Tenaga", "Kolom Target": "Tenaga", "Tipe Format": "Teks"},
+        {"Sumber": "Master SDMK", "Kolom Asal": "subrumpun_sdmk", "Kolom Target": "subrumpun_sdmk", "Tipe Format": "Teks"},
+        {"Sumber": "Master SDMK", "Kolom Asal": "rumpun_sdmk", "Kolom Target": "rumpun_sdmk", "Tipe Format": "Teks"},
+        {"Sumber": "Master SDMK", "Kolom Asal": "kategori_sdmk", "Kolom Target": "kategori_sdmk", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "Alamat", "Kolom Target": "Alamat", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "Tipe", "Kolom Target": "Tipe", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "Jenis", "Kolom Target": "Jenis", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "Tingkatan", "Kolom Target": "Tingkatan", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "Penyelenggara", "Kolom Target": "Penyelenggara", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "latitude", "Kolom Target": "latitude", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "longitude", "Kolom Target": "longitude", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "desa", "Kolom Target": "desa", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "kec", "Kolom Target": "kec", "Tipe Format": "Teks"},
+        {"Sumber": "Master Fasyankes", "Kolom Asal": "kab", "Kolom Target": "kab", "Tipe Format": "Teks"},
+    ]
+    st.session_state.mapping_df = pd.DataFrame(default_mapping)
+
 # --- FUNGSI PEMBACA LOGO (BASE64) ---
 @st.cache_data
 def get_image_base64(file_path):
@@ -54,7 +88,7 @@ if logo_b64:
             <img src="data:image/jpeg;base64,{logo_b64}" alt="Logo Pemda DIY">
             <div>
                 <h1>Portal Konsolidasi & QC SDMK Fasyankes DIY</h1>
-                <p>Dinas Kesehatan DIY • Ultimate Multi-Master ETL Pipeline</p>
+                <p>Dinas Kesehatan DIY • Dynamic Multi-Master ETL Pipeline</p>
             </div>
         </div>
     """
@@ -63,7 +97,7 @@ else:
         <div class="diy-header">
             <div>
                 <h1>🏛️ Portal Konsolidasi & QC SDMK Fasyankes DIY</h1>
-                <p>Dinas Kesehatan DIY • Ultimate Multi-Master ETL Pipeline</p>
+                <p>Dinas Kesehatan DIY • Dynamic Multi-Master ETL Pipeline</p>
             </div>
         </div>
     """
@@ -89,10 +123,10 @@ master_file = st.sidebar.file_uploader(
 )
 
 master_sdmk_file = st.sidebar.file_uploader(
-    "⚕️ 3. Master SDMK (.xlsx)", 
+    "⚕️ 3. Master Kode SDMK (.xlsx)", 
     type=["xlsx"],
     key=f"mastersdmk_{st.session_state.uploader_key}",
-    help="Hanya dibutuhkan jika Anda memproses Mode Super Lengkap."
+    help="Dibutuhkan jika Anda melakukan mapping kolom dari Master SDMK."
 )
 
 if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=True):
@@ -100,20 +134,14 @@ if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=
     st.rerun()
 
 # =====================================================================
-# FUNGSI UTAMA ETL PIPELINE 
+# FUNGSI UTAMA ETL PIPELINE (BERBASIS MAPPING DINAMIS)
 # =====================================================================
-def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_cols):
+def jalankan_pipeline_dinamis(files_laporan, file_m_faskes, file_m_sdmk, df_mapping_rules):
     if not files_laporan or not file_m_faskes:
         st.error("⚠️ Harap unggah berkas Laporan dan Master Fasyankes terlebih dahulu!")
         return
-    if mode == "lengkap" and not file_m_sdmk:
-        st.error("⚠️ Untuk Mode Lengkap, berkas Master Kode SDMK Wajib Diunggah di panel samping!")
-        return
-    if not target_cols:
-        st.error("⚠️ Pilih minimal satu kolom target output!")
-        return
-
-    with st.spinner(f"Menjalankan Pipeline ETL ({mode.upper()})..."):
+    
+    with st.spinner("Menjalankan Pipeline ETL Berbasis Mapping Dinamis..."):
         try:
             # TAHAP 1: BACA LAPORAN FASYANKES (SMART HEADER)
             data_frames = []
@@ -145,31 +173,15 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                                     break
                                     
                         if header_found:
-                            rename_dict = {}
-                            for col in df_temp.columns:
-                                c_str = str(col).lower().strip()
-                                if "nama fasyankes" in c_str: rename_dict[col] = "Nama Fasyankes"
-                                elif c_str == "nik": rename_dict[col] = "NIK"
-                                elif "tanggal lahir" in c_str: rename_dict[col] = "Tanggal Lahir"
-                                elif "nama lengkap" in c_str: rename_dict[col] = "Nama Lengkap"
-                                elif "jenis tenaga" in c_str: rename_dict[col] = "Jenis Tenaga"
-                                elif c_str == "status": rename_dict[col] = "Status"
-                                elif "jenis kelamin" in c_str: rename_dict[col] = "Jenis Kelamin"
-                                elif "nomor str" in c_str: rename_dict[col] = "Nomor STR"
-                                elif "status str" in c_str: rename_dict[col] = "Status STR"
-                                elif "nomor sip" in c_str: rename_dict[col] = "Nomor SIP"
-                                elif "tanggal terbit sip" in c_str: rename_dict[col] = "Tanggal Terbit SIP"
-                                elif "tanggal berakhir sip" in c_str: rename_dict[col] = "Tanggal Berakhir SIP"
-                            df_temp = df_temp.rename(columns=rename_dict)
                             data_frames.append(df_temp)
                 except Exception: pass
 
             if not data_frames:
-                st.error("❌ Seluruh berkas dilewati karena format tidak dikenali/kosong.")
+                st.error("❌ Seluruh berkas laporan dilewati karena format tidak dikenali/kosong.")
                 return
             df_raw = pd.concat(data_frames, ignore_index=True)
 
-            # TAHAP 2: BACA & JOIN MASTER FASYANKES 
+            # TAHAP 2: BACA & JOIN MASTER FASYANKES
             df_master = pd.read_excel(file_m_faskes)
             h_found = False
             if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
@@ -186,66 +198,47 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 st.error("❌ Gagal: Kolom 'Nama Fasyankes' tidak terdeteksi di Master Fasyankes.")
                 return
 
-            r_master = {}
-            for col in df_master.columns:
-                c_str = str(col).lower().strip()
-                if "nama fasyankes" in c_str: r_master[col] = "Nama Fasyankes"
-                elif "kode" == c_str or "kode fasyankes" in c_str: r_master[col] = "Kode"
-                elif c_str == "alamat": r_master[col] = "Alamat"
-                elif c_str == "tipe": r_master[col] = "Tipe"
-                elif c_str == "jenis": r_master[col] = "Jenis"
-                elif c_str == "tingkatan": r_master[col] = "Tingkatan"
-                elif c_str == "penyelenggara": r_master[col] = "Penyelenggara"
-                elif "lat" in c_str: r_master[col] = "latitude"
-                elif "long" in c_str: r_master[col] = "longitude"
-                elif "desa" in c_str or "kelurahan" in c_str: r_master[col] = "desa"
-                elif "kec" in c_str: r_master[col] = "kec"
-                elif "kab" in c_str or "kota" in c_str: r_master[col] = "kab"
-            df_master = df_master.rename(columns=r_master)
+            col_raw_faskes = next((c for c in df_raw.columns if "nama fasyankes" in str(c).lower()), None)
+            col_m_faskes = next((c for c in df_master.columns if "nama fasyankes" in str(c).lower()), None)
 
-            if "Nama Fasyankes" in df_raw.columns and "Nama Fasyankes" in df_master.columns:
-                df_raw['_j'] = df_raw["Nama Fasyankes"].astype(str).str.strip().str.lower()
-                df_master['_j'] = df_master["Nama Fasyankes"].astype(str).str.strip().str.lower()
+            if col_raw_faskes and col_m_faskes:
+                df_raw['_j'] = df_raw[col_raw_faskes].astype(str).str.strip().str.lower()
+                df_master['_j'] = df_master[col_m_faskes].astype(str).str.strip().str.lower()
                 df_master = df_master.drop_duplicates(subset=['_j'])
                 df_merged = pd.merge(df_raw, df_master, on="_j", how="left", suffixes=("", "_master")).drop(columns=['_j'])
-                if "Nama Fasyankes_master" in df_merged.columns:
-                    df_merged["Nama Fasyankes"] = df_merged["Nama Fasyankes_master"].fillna(df_merged["Nama Fasyankes"])
             else:
-                st.error("❌ Gagal Menggabungkan Data: Kolom 'Nama Fasyankes' hilang.")
+                st.error("❌ Kolom 'Nama Fasyankes' tidak ditemukan untuk proses joining.")
                 return
 
-            # TAHAP 3: BACA & JOIN MASTER SDMK 
-            if mode == "lengkap":
-                df_sdmk = pd.read_excel(file_m_sdmk)
-                r_sdmk = {}
-                for col in df_sdmk.columns:
-                    c_str = str(col).lower().strip()
-                    if c_str == "jenis tenaga": r_sdmk[col] = "Jenis Tenaga"
-                    elif c_str == "tenaga": r_sdmk[col] = "Tenaga"
-                    elif c_str == "subrumpun_sdmk" or c_str == "subrumpun sdmk": r_sdmk[col] = "subrumpun_sdmk"
-                    elif c_str == "rumpun_sdmk" or c_str == "rumpun sdmk": r_sdmk[col] = "rumpun_sdmk"
-                    elif c_str == "kategori_sdmk" or c_str == "kategori sdmk": r_sdmk[col] = "kategori_sdmk"
-                df_sdmk = df_sdmk.rename(columns=r_sdmk)
+            # TAHAP 3: BACA & JOIN MASTER SDMK (JIKA ADA)
+            if file_m_sdmk is not None:
+                try:
+                    df_sdmk = pd.read_excel(file_m_sdmk)
+                    col_raw_tenaga = next((c for c in df_merged.columns if "jenis tenaga" in str(c).lower()), None)
+                    col_m_tenaga = next((c for c in df_sdmk.columns if "jenis tenaga" in str(c).lower()), None)
+                    
+                    if col_raw_tenaga and col_m_tenaga:
+                        df_merged['_j_sdmk'] = df_merged[col_raw_tenaga].astype(str).str.strip().str.lower()
+                        df_sdmk['_j_sdmk'] = df_sdmk[col_m_tenaga].astype(str).str.strip().str.lower()
+                        df_sdmk = df_sdmk.drop_duplicates(subset=['_j_sdmk'])
+                        df_merged = pd.merge(df_merged, df_sdmk, on="_j_sdmk", how="left", suffixes=("", "_sdmk")).drop(columns=['_j_sdmk'])
+                except Exception:
+                    pass
 
-                if "Jenis Tenaga" in df_merged.columns and "Jenis Tenaga" in df_sdmk.columns:
-                    df_merged['_j_sdmk'] = df_merged["Jenis Tenaga"].astype(str).str.strip().str.lower()
-                    df_sdmk['_j_sdmk'] = df_sdmk["Jenis Tenaga"].astype(str).str.strip().str.lower()
-                    df_sdmk = df_sdmk.drop_duplicates(subset=['_j_sdmk'])
-                    df_merged = pd.merge(df_merged, df_sdmk, on="_j_sdmk", how="left", suffixes=("", "_sdmk")).drop(columns=['_j_sdmk'])
+            # TAHAP 4: PEMBUATAN UID & LOG TANGGAL PROSES OTOMATIS
+            col_nama_lengkap = next((c for c in df_merged.columns if "nama lengkap" in str(c).lower() or c.lower() == "nama"), None)
+            col_tgl_lahir = next((c for c in df_merged.columns if "tanggal lahir" in str(c).lower()), None)
 
-            # TAHAP 4: PEMBUATAN UID (UNIQUE IDENTIFIER) & LOG TANGGAL PROSES
-            if "Nama Lengkap" in df_merged.columns and "Tanggal Lahir" in df_merged.columns:
-                clean_nama = df_merged["Nama Lengkap"].astype(str).str.replace(r'[^a-zA-Z]', '', regex=True).str.upper()
-                clean_tgl = pd.to_datetime(df_merged["Tanggal Lahir"], errors='coerce').dt.strftime('%d%m%Y').fillna('00000000')
+            if col_nama_lengkap and col_tgl_lahir:
+                clean_nama = df_merged[col_nama_lengkap].astype(str).str.replace(r'[^a-zA-Z]', '', regex=True).str.upper()
+                clean_tgl = pd.to_datetime(df_merged[col_tgl_lahir], errors='coerce').dt.strftime('%d%m%Y').fillna('00000000')
                 df_merged["UID"] = clean_nama + "_" + clean_tgl
             else:
                 df_merged["UID"] = None
                 
-            # Log Timestamp Otomatis saat data diproses
-            timestamp_sekarang = pd.Timestamp.now().strftime("%d-%m-%Y %H:%M")
-            df_merged["Tanggal Proses"] = timestamp_sekarang
+            df_merged["Tanggal Proses"] = pd.Timestamp.now().strftime("%d-%m-%Y %H:%M")
 
-            # TAHAP 5: PEMETAAN KOLOM (MAPPING)
+            # TAHAP 5: PEMETAAN KOLOM BERDASARKAN TABEL MAPPING DINAMIS
             def force_string(val):
                 if pd.isna(val) or val is None or str(val).lower() == 'nan': return None
                 val_str = str(val).strip()
@@ -253,44 +246,55 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 if val_str.startswith("="): val_str = "'" + val_str
                 return val_str
 
-            map_cfg = {
-                "uid": ("UID", "Teks"), "kode_unit": ("Kode", "Teks"), "nama_unit": ("Nama Fasyankes", "Teks"), "nik": ("NIK", "Teks"),
-                "tanggal_lahir": ("Tanggal Lahir", "Tgl"), "nama": ("Nama Lengkap", "Teks"), "jenis_tenaga": ("Jenis Tenaga", "Teks"),
-                "status_pegawai": ("Status", "Teks"), "jenis_kelamin": ("Jenis Kelamin", "Teks"), "nomor_str": ("Nomor STR", "Teks"),
-                "status_str": ("Status STR", "Teks"), "nomor_sip": ("Nomor SIP", "Teks"),
-                "tanggal_terbit_sip": ("Tanggal Terbit SIP", "Tgl"), "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", "Tgl"),
-                "Tenaga": ("Tenaga", "Teks"), "subrumpun_sdmk": ("subrumpun_sdmk", "Teks"), "rumpun_sdmk": ("rumpun_sdmk", "Teks"),
-                "kategori_sdmk": ("kategori_sdmk", "Teks"), "Alamat": ("Alamat", "Teks"), "Tipe": ("Tipe", "Teks"),
-                "Jenis": ("Jenis", "Teks"), "Tingkatan": ("Tingkatan", "Teks"), "Penyelenggara": ("Penyelenggara", "Teks"),
-                "latitude": ("latitude", "Teks"), "longitude": ("longitude", "Teks"), "desa": ("desa", "Teks"),
-                "kec": ("kec", "Teks"), "kab": ("kab", "Teks"), "tanggal_proses": ("Tanggal Proses", "Teks"),
-            }
-
             df_final = pd.DataFrame()
+            # Kolom nomor urut murni dari sistem (1, 2, 3...)
             df_final["no"] = range(1, len(df_merged) + 1)
-            t_to_type = {}
+            
+            # Tambahkan Kolom Wajib UID di Urutan Pertama (Sebelum kolom lain)
+            df_final["uid"] = df_merged["UID"]
 
-            for tk in target_cols.keys():
-                if tk in map_cfg:
-                    asal, tipe = map_cfg[tk]
-                    t_to_type[tk] = tipe
-                    if asal in df_merged.columns:
-                        if tipe == "Tgl": df_final[tk] = pd.to_datetime(df_merged[asal], errors="coerce")
-                        else: df_final[tk] = df_merged[asal].apply(force_string)
+            type_mapping_registry = {"no": "Angka", "uid": "Teks"}
+
+            for _, row in df_mapping_rules.iterrows():
+                t_target = str(row["Kolom Target"]).strip()
+                c_asal = str(row["Kolom Asal"]).strip()
+                t_format = str(row["Tipe Format"]).strip()
+                
+                # Cegah duplikasi jika kolom uid sudah dipasang otomatis
+                if t_target.lower() == "uid":
+                    continue
+
+                type_mapping_registry[t_target] = t_format
+
+                if t_target.lower() in ["tanggal proses", "log tanggal proses"]:
+                    df_final[t_target] = df_merged["Tanggal Proses"]
+                    continue
+
+                # Cari kolom asal secara fleksibel (case-insensitive)
+                match_col = next((c for c in df_merged.columns if str(c).lower() == c_asal.lower()), None)
+
+                if match_col:
+                    if "tanggal" in t_format.lower() or t_format.lower() == "tgl":
+                        df_final[t_target] = pd.to_datetime(df_merged[match_col], errors="coerce")
                     else:
-                        df_final[tk] = None
+                        df_final[t_target] = df_merged[match_col].apply(force_string)
+                else:
+                    df_final[t_target] = None
 
             # TAHAP 6: QUALITY CONTROL (QC)
             df_no_kode = pd.DataFrame()
-            if "kode_unit" in df_final.columns and "nama_unit" in df_final.columns:
-                m_kode = df_final["kode_unit"].isna() | (df_final["kode_unit"] == "")
-                df_no_kode = pd.DataFrame({"Nama_Fasyankes_Tanpa_Kode": sorted(df_final[m_kode]["nama_unit"].dropna().unique())})
+            col_kode_res = next((c for c in df_final.columns if "kode" in str(c).lower()), None)
+            col_nama_res = next((c for c in df_final.columns if "nama_unit" in str(c).lower() or "fasyankes" in str(c).lower()), None)
+            if col_kode_res and col_nama_res:
+                m_kode = df_final[col_kode_res].isna() | (df_final[col_kode_res] == "")
+                df_no_kode = pd.DataFrame({"Nama_Fasyankes_Tanpa_Kode": sorted(df_final[m_kode][col_nama_res].dropna().unique())})
             
             df_no_tgl = pd.DataFrame()
-            if "tanggal_lahir" in df_final.columns:
-                df_no_tgl = df_final[df_final["tanggal_lahir"].isna()][[c for c in ["no","nama","nama_unit","jenis_tenaga","tanggal_lahir"] if c in df_final.columns]]
+            col_tgl_res = next((c for c in df_final.columns if "tanggal_lahir" in str(c).lower()), None)
+            if col_tgl_res:
+                df_no_tgl = df_final[df_final[col_tgl_res].isna()]
 
-            # TAHAP 7: EXCEL GENERATION
+            # TAHAP 7: EXCEL GENERATION DENGAN AUTO-FIT
             output_buffer = io.BytesIO()
             with pd.ExcelWriter(output_buffer, engine="openpyxl", date_format="DD-MM-YYYY", datetime_format="DD-MM-YYYY") as writer:
                 sheets_data = {"Data_Clean": df_final, "Error_Tanpa_Kode": df_no_kode, "Error_Tanpa_Tgl_Lahir": df_no_tgl}
@@ -302,7 +306,8 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                     ws = wb["Data_Clean"]
                     for col in ws.iter_cols(min_row=2):
                         c_name = ws.cell(row=1, column=col[0].column).value
-                        if t_to_type.get(c_name, "Teks") == "Tgl":
+                        fmt = type_mapping_registry.get(c_name, "Teks")
+                        if "tanggal" in str(fmt).lower():
                             for cell in col:
                                 if cell.value: cell.number_format = "DD-MM-YYYY"
                         elif c_name == "no":
@@ -325,16 +330,16 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             output_buffer.seek(0)
             
             # TAMPILAN HASIL
-            st.success(f"✨ Laporan {mode.title()} berhasil diproses pada {timestamp_sekarang} WIB!")
+            st.success("✨ Konsolidasi ETL Berbasis Mapping Dinamis Berhasil!")
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
             c2.metric("Fasyankes Tanpa Kode", f"{len(df_no_kode)} Unit")
             c3.metric("Pegawai Tanpa Tgl Lahir", f"{len(df_no_tgl)} Orang")
             st.markdown("---")
             st.download_button(
-                label=f"📥 Unduh File Excel ({mode.title()})", 
+                label="📥 Unduh File Excel Hasil Dinamis", 
                 data=output_buffer, 
-                file_name=f"Data_Pegawai_{mode.title()}_DIY.xlsx", 
+                file_name="Data_Pegawai_Dinamis_DIY.xlsx", 
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 use_container_width=True
             )
@@ -342,64 +347,54 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             st.error(f"❌ Terjadi kesalahan teknis: {e}")
 
 # =====================================================================
-# MAIN AREA: SISTEM TABS 
+# MAIN AREA: SISTEM TABS (TAB 1: EKSEKUSI, TAB 2: PENGATURAN KOLOM)
 # =====================================================================
-tab_standar, tab_lengkap = st.tabs([
-    "📊 1. MODE LAPORAN STANDAR", 
-    "🚀 2. MODE SUPER LENGKAP (SDMK + Geografis)"
+tab_eksekusi, tab_mapping = st.tabs([
+    "🚀 1. Eksekusi Pipeline & Unduh", 
+    "⚙️ 2. Pengaturan & Mapping Kolom Dinamis"
 ])
 
-# ----------------- KONTEN TAB 1 (STANDAR) -----------------
-with tab_standar:
-    st.info("💡 **Mode Laporan Standar**: Menghasilkan data rekapitulasi dasar pegawai dan unit fasyankes.")
-    st.markdown("##### 📋 Sesuaikan Kolom Output")
-    
-    dict_standar = {
-        "uid": ("UID Pegawai (Nama+TglLahir)", True),
-        "kode_unit": ("Kode Fasyankes", True), "nama_unit": ("Nama Fasyankes", True), "tanggal_lahir": ("Tanggal Lahir", True),
-        "nama": ("Nama Lengkap", True), "jenis_tenaga": ("Jenis Tenaga", True), "status_pegawai": ("Status Pegawai", True),
-        "jenis_kelamin": ("Jenis Kelamin", True), "nomor_str": ("Nomor STR", True), "status_str": ("Status STR", False),
-        "nomor_sip": ("Nomor SIP", True), "tanggal_terbit_sip": ("Tanggal Terbit SIP", True), "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
-        "nik": ("NIK (Nomor Induk)", False),
-        "tanggal_proses": ("Log Tanggal Proses", True) # <--- Opsi baru ditambahkan
-    }
-    
-    selected_std = {}
-    cols_std = st.columns(3)
-    for i, (k, (label, default)) in enumerate(dict_standar.items()):
-        if cols_std[i % 3].checkbox(label, value=default, key=f"std_{k}"):
-            selected_std[k] = label
-            
+# ----------------- KONTEN TAB 1: EKSEKUSI -----------------
+with tab_eksekusi:
+    st.info("💡 **Halaman Eksekusi**: Pastikan aturan mapping kolom di Tab sebelah sudah sesuai dengan kebutuhan Anda.")
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🔄 GABUNGKAN & PROSES (MODE STANDAR)", type="primary", use_container_width=True):
-        jalankan_pipeline("standar", uploaded_files, master_file, None, selected_std)
-
-
-# ----------------- KONTEN TAB 2 (SUPER LENGKAP) -----------------
-with tab_lengkap:
-    st.info("💡 **Mode Super Lengkap**: Mengintegrasikan klasifikasi Profesi SDMK beserta Profil Detail & Koordinat Fasyankes.")
-    st.markdown("##### 📋 Sesuaikan Kolom Output")
     
-    dict_lengkap = {
-        "uid": ("UID Pegawai (Nama+TglLahir)", True),
-        "kode_unit": ("Kode Fasyankes", True), "nama_unit": ("Nama Fasyankes", True), "tanggal_lahir": ("Tanggal Lahir", True),
-        "nama": ("Nama Lengkap", True), "jenis_tenaga": ("Jenis Tenaga", True), "status_pegawai": ("Status Pegawai", True),
-        "jenis_kelamin": ("Jenis Kelamin", True), "nomor_str": ("Nomor STR", True), "nomor_sip": ("Nomor SIP", True),
-        "tanggal_terbit_sip": ("Tanggal Terbit SIP", True), "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", True),
-        "Tenaga": ("Tenaga (SDMK)", True), "subrumpun_sdmk": ("Subrumpun SDMK", True), "rumpun_sdmk": ("Rumpun SDMK", True),
-        "kategori_sdmk": ("Kategori SDMK", True), "Alamat": ("Alamat", True), "Tipe": ("Tipe Fasyankes", True),
-        "Jenis": ("Jenis Fasyankes", True), "Tingkatan": ("Tingkatan", True), "Penyelenggara": ("Penyelenggara", True),
-        "latitude": ("Latitude", True), "longitude": ("Longitude", True), "desa": ("Desa / Kelurahan", True),
-        "kec": ("Kecamatan", True), "kab": ("Kabupaten / Kota", True), "status_str": ("Status STR", False), "nik": ("NIK (Nomor Induk)", False),
-        "tanggal_proses": ("Log Tanggal Proses", True) # <--- Opsi baru ditambahkan
-    }
-    
-    selected_pro = {}
-    cols_pro = st.columns(3)
-    for i, (k, (label, default)) in enumerate(dict_lengkap.items()):
-        if cols_pro[i % 3].checkbox(label, value=default, key=f"pro_{k}"):
-            selected_pro[k] = label
+    if st.button("🚀 JALANKAN PROSES ETL SEKARANG", type="primary", use_container_width=True):
+        jalankan_pipeline_dinamis(uploaded_files, master_file, master_sdmk_file, st.session_state.mapping_df)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🚀 GABUNGKAN & PROSES (MODE SUPER LENGKAP)", type="primary", use_container_width=True):
-        jalankan_pipeline("lengkap", uploaded_files, master_file, master_sdmk_file, selected_pro)
+# ----------------- KONTEN TAB 2: MAPPING MANAGER -----------------
+with tab_mapping:
+    st.subheader("🛠️ Manajer Pengaturan Kolom Input & Master")
+    st.markdown(
+        "Di bawah ini adalah daftar kolom yang akan diekstrak dan digabungkan ke file Excel hasil. "
+        "Kolom **`no`** (nomor urut otomatis) dan **`uid`** (ID unik pegawai) sudah otomatis dipasang oleh sistem di bagian paling depan."
+    )
+    
+    edited_df = st.data_editor(
+        st.session_state.mapping_df,
+        num_rows="dynamic",
+        column_config={
+            "Sumber": st.column_config.SelectboxColumn(
+                "Sumber Data",
+                options=["Laporan Fasyankes", "Master Fasyankes", "Master SDMK"],
+                required=True
+            ),
+            "Tipe Format": st.column_config.SelectboxColumn(
+                "Tipe Format",
+                options=["Teks", "Tanggal (DD-MM-YYYY)", "Teks Bersih", "Angka"],
+                required=True
+            )
+        },
+        use_container_width=True,
+        key="editor_mapping"
+    )
+    
+    st.session_state.mapping_df = edited_df
+    
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("🔄 Reset Pengaturan Kolom ke Default", use_container_width=True):
+            del st.session_state.mapping_df
+            st.rerun()
+    with col_btn2:
+        st.success("✅ Perubahan pada tabel di atas otomatis tersimpan untuk proses berikutnya.")
