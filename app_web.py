@@ -30,14 +30,19 @@ def get_image_base64(file_path):
 
 logo_b64 = get_image_base64("logo_diy.jpg")
 
-# --- STYLING CSS KHAS MODERN DIY (TERMASUK HIDE STREAMLIT WATERMARK) ---
+# --- STYLING CSS KHAS MODERN DIY (TERMASUK ULTIMATE HIDE WATERMARK) ---
 st.markdown("""
     <style>
-    /* Menyembunyikan Watermark Streamlit */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* --- 1. CSS Sapu Jagat Sembunyikan Watermark Streamlit --- */
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important; display: none !important;}
+    header[data-testid="stHeader"] {visibility: hidden !important; display: none !important;}
+    /* Menyembunyikan floating icon 'Built with Streamlit' */
+    .viewerBadge_container {visibility: hidden !important; display: none !important;}
+    .viewerBadge_link {visibility: hidden !important; display: none !important;}
+    a[href^="https://streamlit.io/cloud"] {visibility: hidden !important; display: none !important;}
     
+    /* --- 2. CSS Tampilan Aplikasi DIY --- */
     .main { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     .diy-header {
         background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
@@ -132,7 +137,6 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
             dict_kamus_uid = {}
             if file_m_uid is not None:
                 try:
-                    # Cari sheet Kamus_UID_Update jika ada, jika tidak baca sheet pertama
                     xl = pd.ExcelFile(file_m_uid)
                     s_name = "Kamus_UID_Update" if "Kamus_UID_Update" in xl.sheet_names else 0
                     df_kamus = pd.read_excel(file_m_uid, sheet_name=s_name, dtype=str)
@@ -203,7 +207,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
                 return
             df_raw = pd.concat(data_frames, ignore_index=True)
 
-            # TAHAP 2: BACA & JOIN MASTER FASYANKES (DENGAN DTYPE=STR UNTUK KOORDINAT)
+            # TAHAP 2: BACA & JOIN MASTER FASYANKES (DENGAN DTYPE=STR)
             df_master = pd.read_excel(file_m_faskes, dtype=str)
             h_found = False
             if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
@@ -272,17 +276,14 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
                 nama_val = str(row.get("Nama Lengkap", "")).strip()
                 tgl_lhr_raw = str(row.get("Tanggal Lahir", "")).strip()
                 
-                # Normalisasi Tanggal Lahir untuk pencarian kamus
                 try: tgl_lhr_norm = pd.to_datetime(tgl_lhr_raw).strftime('%d-%m-%Y')
                 except: tgl_lhr_norm = tgl_lhr_raw
                 
                 kunci_kamus = f"{nama_val.upper()}_{tgl_lhr_norm}"
                 
-                # 1. Jika ada di file kamus unggahan, gunakan UID lama
                 if dict_kamus_uid and kunci_kamus in dict_kamus_uid:
                     return dict_kamus_uid[kunci_kamus]
                 
-                # 2. Jika pegawai baru, ciptakan Hash UID (4 Huruf + 6 Karakter Unik)
                 clean_nama = ''.join([c for c in nama_val if c.isalpha()]).upper()
                 prefix = clean_nama[:4].ljust(4, 'X')
                 nik_val = str(row.get("NIK", "")).strip()
@@ -354,7 +355,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
             with pd.ExcelWriter(output_buffer, engine="openpyxl", date_format="DD-MM-YYYY", datetime_format="DD-MM-YYYY") as writer:
                 sheets_data = {
                     "Data_Clean": df_final, 
-                    "Kamus_UID_Update": df_kamus_export, # <-- Sheet Kamus dimasukkan
+                    "Kamus_UID_Update": df_kamus_export,
                     "Error_Tanpa_Kode": df_no_kode, 
                     "Error_Tanpa_Tgl_Lahir": df_no_tgl
                 }
@@ -364,11 +365,9 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
                 wb = writer.book
                 for s_name in wb.sheetnames:
                     ws = wb[s_name]
-                    # Format kolom khusus
                     if s_name == "Data_Clean" or s_name == "Kamus_UID_Update":
                         for col in ws.iter_cols(min_row=2):
                             c_name = ws.cell(row=1, column=col[0].column).value
-                            # Deteksi manual untuk sheet kamus
                             if s_name == "Kamus_UID_Update" and c_name == "Tanggal Lahir":
                                 for cell in col:
                                     if cell.value: cell.number_format = "DD-MM-YYYY"
@@ -383,7 +382,6 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
                                     for cell in col:
                                         if cell.value: cell.number_format = '@'
 
-                    # Auto-fit kolom
                     for col in ws.columns:
                         max_len = 0
                         col_let = col[0].column_letter
