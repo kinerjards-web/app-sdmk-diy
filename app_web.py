@@ -30,9 +30,14 @@ def get_image_base64(file_path):
 
 logo_b64 = get_image_base64("logo_diy.jpg")
 
-# --- STYLING CSS KHAS MODERN DIY ---
+# --- STYLING CSS KHAS MODERN DIY (TERMASUK HIDE STREAMLIT WATERMARK) ---
 st.markdown("""
     <style>
+    /* Menyembunyikan Watermark Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
     .main { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     .diy-header {
         background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
@@ -96,6 +101,13 @@ master_sdmk_file = st.sidebar.file_uploader(
     help="Hanya dibutuhkan jika Anda memproses Mode Super Lengkap."
 )
 
+master_uid_file = st.sidebar.file_uploader(
+    "🪪 4. Kamus UID Lama (.xlsx) - Opsional", 
+    type=["xlsx"],
+    key=f"masteruid_{st.session_state.uploader_key}",
+    help="Unggah file Excel bulan lalu agar sistem menggunakan UID yang sama untuk orang yang sama."
+)
+
 if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=True):
     reset_data()
     st.rerun()
@@ -103,7 +115,7 @@ if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=
 # =====================================================================
 # FUNGSI UTAMA ETL PIPELINE 
 # =====================================================================
-def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_cols):
+def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_uid, target_cols):
     if not files_laporan or not file_m_faskes:
         st.error("⚠️ Harap unggah berkas Laporan dan Master Fasyankes terlebih dahulu!")
         return
@@ -116,6 +128,27 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
 
     with st.spinner(f"Menjalankan Pipeline ETL ({mode.upper()})..."):
         try:
+            # --- MEMBACA KAMUS UID (JIKA DIUNGGAH) ---
+            dict_kamus_uid = {}
+            if file_m_uid is not None:
+                try:
+                    # Cari sheet Kamus_UID_Update jika ada, jika tidak baca sheet pertama
+                    xl = pd.ExcelFile(file_m_uid)
+                    s_name = "Kamus_UID_Update" if "Kamus_UID_Update" in xl.sheet_names else 0
+                    df_kamus = pd.read_excel(file_m_uid, sheet_name=s_name, dtype=str)
+                    
+                    if "Nama Lengkap" in df_kamus.columns and "UID" in df_kamus.columns:
+                        for _, row in df_kamus.iterrows():
+                            k_nama = str(row["Nama Lengkap"]).strip().upper()
+                            k_tgl_raw = str(row.get("Tanggal Lahir", "")).strip()
+                            try: k_tgl = pd.to_datetime(k_tgl_raw).strftime('%d-%m-%Y')
+                            except: k_tgl = k_tgl_raw
+                            
+                            k_uid = str(row["UID"]).strip()
+                            dict_kamus_uid[f"{k_nama}_{k_tgl}"] = k_uid
+                except Exception as e:
+                    st.warning("⚠️ Gagal membaca Kamus UID. Pastikan format kolom benar.")
+
             # TAHAP 1: BACA LAPORAN FASYANKES (SMART HEADER)
             data_frames = []
             for up_file in files_laporan:
@@ -170,7 +203,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 return
             df_raw = pd.concat(data_frames, ignore_index=True)
 
-            # TAHAP 2: BACA & JOIN MASTER FASYANKES (DENGAN DTYPE=STR UNTUK MENJAGA FORMAT KOORDINAT)
+            # TAHAP 2: BACA & JOIN MASTER FASYANKES (DENGAN DTYPE=STR UNTUK KOORDINAT)
             df_master = pd.read_excel(file_m_faskes, dtype=str)
             h_found = False
             if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
@@ -234,21 +267,32 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                     df_sdmk = df_sdmk.drop_duplicates(subset=['_j_sdmk'])
                     df_merged = pd.merge(df_merged, df_sdmk, on="_j_sdmk", how="left", suffixes=("", "_sdmk")).drop(columns=['_j_sdmk'])
 
-            # TAHAP 4: PEMBUATAN HASH UID
-            def generate_hash_uid(row):
-                nama_val = str(row.get("Nama Lengkap", ""))
+            # TAHAP 4: PEMBUATAN HASH UID & PENGECEKAN KAMUS UID
+            def generate_uid(row):
+                nama_val = str(row.get("Nama Lengkap", "")).strip()
+                tgl_lhr_raw = str(row.get("Tanggal Lahir", "")).strip()
+                
+                # Normalisasi Tanggal Lahir untuk pencarian kamus
+                try: tgl_lhr_norm = pd.to_datetime(tgl_lhr_raw).strftime('%d-%m-%Y')
+                except: tgl_lhr_norm = tgl_lhr_raw
+                
+                kunci_kamus = f"{nama_val.upper()}_{tgl_lhr_norm}"
+                
+                # 1. Jika ada di file kamus unggahan, gunakan UID lama
+                if dict_kamus_uid and kunci_kamus in dict_kamus_uid:
+                    return dict_kamus_uid[kunci_kamus]
+                
+                # 2. Jika pegawai baru, ciptakan Hash UID (4 Huruf + 6 Karakter Unik)
                 clean_nama = ''.join([c for c in nama_val if c.isalpha()]).upper()
                 prefix = clean_nama[:4].ljust(4, 'X')
+                nik_val = str(row.get("NIK", "")).strip()
                 
-                tgl_lhr = str(row.get("Tanggal Lahir", ""))
-                nik_val = str(row.get("NIK", ""))
-                raw_string = f"{nama_val}_{tgl_lhr}_{nik_val}"
-                
+                raw_string = f"{nama_val}_{tgl_lhr_raw}_{nik_val}"
                 hash_code = hashlib.md5(raw_string.encode('utf-8')).hexdigest()[:6].upper()
                 return f"{prefix}_{hash_code}"
 
             if "Nama Lengkap" in df_merged.columns:
-                df_merged["UID"] = df_merged.apply(generate_hash_uid, axis=1)
+                df_merged["UID"] = df_merged.apply(generate_uid, axis=1)
             else:
                 df_merged["UID"] = None
                 
@@ -263,35 +307,16 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 return val_str
 
             map_cfg = {
-                "uid": ("UID", "Teks"), 
-                "kode_unit": ("Kode", "Teks"), 
-                "nama_unit": ("Nama Fasyankes", "Teks"), 
-                "nik": ("NIK", "Teks"),
-                "tanggal_lahir": ("Tanggal Lahir", "Tgl"), 
-                "nama": ("Nama Lengkap", "Teks"), 
-                "jenis_tenaga": ("Jenis Tenaga", "Teks"),
-                "status_pegawai": ("Status", "Teks"), 
-                "jenis_kelamin": ("Jenis Kelamin", "Teks"), 
-                "nomor_str": ("Nomor STR", "Teks"),
-                "status_str": ("Status STR", "Teks"), 
-                "nomor_sip": ("Nomor SIP", "Teks"),
-                "tanggal_terbit_sip": ("Tanggal Terbit SIP", "Tgl"), 
-                "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", "Tgl"),
-                "Tenaga": ("Tenaga", "Teks"), 
-                "subrumpun_sdmk": ("subrumpun_sdmk", "Teks"), 
-                "rumpun_sdmk": ("rumpun_sdmk", "Teks"),
-                "kategori_sdmk": ("kategori_sdmk", "Teks"), 
-                "Alamat": ("Alamat", "Teks"), 
-                "Tipe": ("Tipe", "Teks"),
-                "Jenis": ("Jenis", "Teks"), 
-                "Tingkatan": ("Tingkatan", "Teks"), 
-                "Penyelenggara": ("Penyelenggara", "Teks"),
-                "latitude": ("latitude", "Teks"), 
-                "longitude": ("longitude", "Teks"), 
-                "desa": ("desa", "Teks"),
-                "kec": ("kec", "Teks"), 
-                "kab": ("kab", "Teks"), 
-                "tanggal_proses": ("Tanggal Proses", "Teks")
+                "uid": ("UID", "Teks"), "kode_unit": ("Kode", "Teks"), "nama_unit": ("Nama Fasyankes", "Teks"), "nik": ("NIK", "Teks"),
+                "tanggal_lahir": ("Tanggal Lahir", "Tgl"), "nama": ("Nama Lengkap", "Teks"), "jenis_tenaga": ("Jenis Tenaga", "Teks"),
+                "status_pegawai": ("Status", "Teks"), "jenis_kelamin": ("Jenis Kelamin", "Teks"), "nomor_str": ("Nomor STR", "Teks"),
+                "status_str": ("Status STR", "Teks"), "nomor_sip": ("Nomor SIP", "Teks"),
+                "tanggal_terbit_sip": ("Tanggal Terbit SIP", "Tgl"), "tanggal_berakhir_sip": ("Tanggal Berakhir SIP", "Tgl"),
+                "Tenaga": ("Tenaga", "Teks"), "subrumpun_sdmk": ("subrumpun_sdmk", "Teks"), "rumpun_sdmk": ("rumpun_sdmk", "Teks"),
+                "kategori_sdmk": ("kategori_sdmk", "Teks"), "Alamat": ("Alamat", "Teks"), "Tipe": ("Tipe", "Teks"),
+                "Jenis": ("Jenis", "Teks"), "Tingkatan": ("Tingkatan", "Teks"), "Penyelenggara": ("Penyelenggara", "Teks"),
+                "latitude": ("latitude", "Teks"), "longitude": ("longitude", "Teks"), "desa": ("desa", "Teks"),
+                "kec": ("kec", "Teks"), "kab": ("kab", "Teks"), "tanggal_proses": ("Tanggal Proses", "Teks")
             }
 
             df_final = pd.DataFrame()
@@ -308,7 +333,13 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                     else:
                         df_final[tk] = None
 
-            # TAHAP 6: QUALITY CONTROL (QC)
+            # TAHAP 6: PENYUSUNAN SHEET KAMUS & QC
+            df_kamus_export = pd.DataFrame()
+            if "uid" in df_final.columns and "nama" in df_final.columns and "tanggal_lahir" in df_final.columns:
+                df_kamus_export = df_final[["nama", "tanggal_lahir", "uid"]].copy()
+                df_kamus_export.rename(columns={"nama": "Nama Lengkap", "tanggal_lahir": "Tanggal Lahir", "uid": "UID"}, inplace=True)
+                df_kamus_export = df_kamus_export.drop_duplicates(subset=["UID"]).dropna(subset=["UID"])
+
             df_no_kode = pd.DataFrame()
             if "kode_unit" in df_final.columns and "nama_unit" in df_final.columns:
                 m_kode = df_final["kode_unit"].isna() | (df_final["kode_unit"] == "")
@@ -321,43 +352,54 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             # TAHAP 7: EXCEL GENERATION
             output_buffer = io.BytesIO()
             with pd.ExcelWriter(output_buffer, engine="openpyxl", date_format="DD-MM-YYYY", datetime_format="DD-MM-YYYY") as writer:
-                sheets_data = {"Data_Clean": df_final, "Error_Tanpa_Kode": df_no_kode, "Error_Tanpa_Tgl_Lahir": df_no_tgl}
+                sheets_data = {
+                    "Data_Clean": df_final, 
+                    "Kamus_UID_Update": df_kamus_export, # <-- Sheet Kamus dimasukkan
+                    "Error_Tanpa_Kode": df_no_kode, 
+                    "Error_Tanpa_Tgl_Lahir": df_no_tgl
+                }
                 for s_name, dframe in sheets_data.items():
                     if not dframe.empty: dframe.to_excel(writer, sheet_name=s_name, index=False)
                 
                 wb = writer.book
-                if "Data_Clean" in wb.sheetnames:
-                    ws = wb["Data_Clean"]
-                    for col in ws.iter_cols(min_row=2):
-                        c_name = ws.cell(row=1, column=col[0].column).value
-                        if t_to_type.get(c_name, "Teks") == "Tgl":
-                            for cell in col:
-                                if cell.value: cell.number_format = "DD-MM-YYYY"
-                        elif c_name == "no":
-                            for cell in col:
-                                if cell.value: cell.number_format = "0"
-                        else:
-                            for cell in col:
-                                if cell.value: cell.number_format = '@'
-
                 for s_name in wb.sheetnames:
-                    worksheet = wb[s_name]
-                    for col in worksheet.columns:
+                    ws = wb[s_name]
+                    # Format kolom khusus
+                    if s_name == "Data_Clean" or s_name == "Kamus_UID_Update":
+                        for col in ws.iter_cols(min_row=2):
+                            c_name = ws.cell(row=1, column=col[0].column).value
+                            # Deteksi manual untuk sheet kamus
+                            if s_name == "Kamus_UID_Update" and c_name == "Tanggal Lahir":
+                                for cell in col:
+                                    if cell.value: cell.number_format = "DD-MM-YYYY"
+                            elif s_name == "Data_Clean":
+                                if t_to_type.get(c_name, "Teks") == "Tgl":
+                                    for cell in col:
+                                        if cell.value: cell.number_format = "DD-MM-YYYY"
+                                elif c_name == "no":
+                                    for cell in col:
+                                        if cell.value: cell.number_format = "0"
+                                else:
+                                    for cell in col:
+                                        if cell.value: cell.number_format = '@'
+
+                    # Auto-fit kolom
+                    for col in ws.columns:
                         max_len = 0
                         col_let = col[0].column_letter
                         for cell in col:
                             try:
                                 if cell.value and len(str(cell.value)) > max_len: max_len = len(str(cell.value))
                             except: pass
-                        worksheet.column_dimensions[col_let].width = max(max_len + 4, 12)
+                        ws.column_dimensions[col_let].width = max(max_len + 4, 12)
             output_buffer.seek(0)
             
             # TAMPILAN HASIL
-            st.success(f"✨ Laporan {mode.title()} berhasil diproses dengan format koordinat murni!")
+            st.success(f"✨ Laporan berhasil diproses! ({len(dict_kamus_uid)} UID dikenali dari Kamus)")
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
-            c2.metric("Fasyankes Tanpa Kode", f"{len(df_no_kode)} Unit")
-            c3.metric("Pegawai Tanpa Tgl Lahir", f"{len(df_no_tgl)} Orang")
+            c2.metric("UID Baru / Unik", f"{len(df_kamus_export)} UID")
+            c3.metric("Fasyankes Tanpa Kode", f"{len(df_no_kode)} Unit")
             st.markdown("---")
             st.download_button(
                 label=f"📥 Unduh File Excel ({mode.title()})", 
@@ -408,7 +450,7 @@ with tab_standar:
             
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🔄 GABUNGKAN & PROSES (MODE STANDAR)", type="primary", use_container_width=True):
-        jalankan_pipeline("standar", uploaded_files, master_file, None, selected_std)
+        jalankan_pipeline("standar", uploaded_files, master_file, None, master_uid_file, selected_std)
 
 
 # ----------------- KONTEN TAB 2 (SUPER LENGKAP) -----------------
@@ -456,4 +498,4 @@ with tab_lengkap:
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🚀 GABUNGKAN & PROSES (MODE SUPER LENGKAP)", type="primary", use_container_width=True):
-        jalankan_pipeline("lengkap", uploaded_files, master_file, master_sdmk_file, selected_pro)
+        jalankan_pipeline("lengkap", uploaded_files, master_file, master_sdmk_file, master_uid_file, selected_pro)
