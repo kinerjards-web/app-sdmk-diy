@@ -10,7 +10,8 @@ from datetime import datetime
 st.set_page_config(
     page_title="Rekap Data SDMK Fasyankes DIY",
     page_icon="🏛️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 if "uploader_key" not in st.session_state:
@@ -30,34 +31,49 @@ def get_image_base64(file_path):
 
 logo_b64 = get_image_base64("logo_diy.jpg")
 
-# --- STYLING CSS KHAS MODERN DIY (TERMASUK ULTIMATE HIDE WATERMARK) ---
-st.markdown("""
-    <style>
-    /* --- 1. CSS Sapu Jagat Sembunyikan Watermark Streamlit --- */
-    #MainMenu {visibility: hidden !important;}
-    footer {visibility: hidden !important; display: none !important;}
-    header[data-testid="stHeader"] {visibility: hidden !important; display: none !important;}
-    /* Menyembunyikan floating icon 'Built with Streamlit' */
-    .viewerBadge_container {visibility: hidden !important; display: none !important;}
-    .viewerBadge_link {visibility: hidden !important; display: none !important;}
-    a[href^="https://streamlit.io/cloud"] {visibility: hidden !important; display: none !important;}
-    
-    /* --- 2. CSS Tampilan Aplikasi DIY --- */
-    .main { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    .diy-header {
-        background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
-        padding: 20px 30px; border-radius: 12px; color: white;
-        margin-bottom: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        display: flex; align-items: center; 
+# --- STYLING CSS & AGRESSIVE INJECTION ---
+# Ini akan memaksa watermark hilang bahkan saat diembed di Google Sites
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden !important;}
+            footer {visibility: hidden !important; display: none !important;}
+            header {visibility: hidden !important; display: none !important;}
+            
+            /* Target agresif untuk balon watermark */
+            [data-testid="stSidebarNav"] {display: none !important;}
+            .viewerBadge_container {display: none !important; visibility: hidden !important;}
+            a[href^="https://streamlit.io/cloud"] {display: none !important; visibility: hidden !important;}
+            #stStreamlitLogo {display: none !important; visibility: hidden !important;}
+            div.viewerBadge_link {display: none !important; visibility: hidden !important;}
+            
+            /* CSS Tampilan Portal DIY */
+            .main { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+            .diy-header {
+                background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
+                padding: 20px 30px; border-radius: 12px; color: white;
+                margin-bottom: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                display: flex; align-items: center; 
+            }
+            .diy-header img { width: 75px; height: auto; margin-right: 25px; }
+            .diy-header h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
+            .diy-header p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.9; }
+            hr { margin-top: 10px; margin-bottom: 10px; }
+            .stTabs [data-baseweb="tab-list"] { gap: 15px; }
+            .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-size: 16px; font-weight: bold; }
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# Tambahan skrip Javascript agresif untuk menghapus div elemen watermark saat runtime
+st.components.v1.html("""
+    <script>
+    var elements = window.parent.document.querySelectorAll('.viewerBadge_container, a[href^="https://streamlit.io/cloud"]');
+    for (var i = 0; i < elements.length; i++) {
+        elements[i].style.display = 'none';
     }
-    .diy-header img { width: 75px; height: auto; margin-right: 25px; }
-    .diy-header h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
-    .diy-header p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.9; }
-    hr { margin-top: 10px; margin-bottom: 10px; }
-    .stTabs [data-baseweb="tab-list"] { gap: 15px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-size: 16px; font-weight: bold; }
-    </style>
-""", unsafe_allow_html=True)
+    </script>
+    """, height=0, width=0)
+
 
 if logo_b64:
     header_html = f"""
@@ -207,7 +223,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
                 return
             df_raw = pd.concat(data_frames, ignore_index=True)
 
-            # TAHAP 2: BACA & JOIN MASTER FASYANKES (DENGAN DTYPE=STR)
+            # TAHAP 2: BACA & JOIN MASTER FASYANKES
             df_master = pd.read_excel(file_m_faskes, dtype=str)
             h_found = False
             if any("nama fasyankes" in str(c).lower() for c in df_master.columns):
@@ -271,7 +287,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
                     df_sdmk = df_sdmk.drop_duplicates(subset=['_j_sdmk'])
                     df_merged = pd.merge(df_merged, df_sdmk, on="_j_sdmk", how="left", suffixes=("", "_sdmk")).drop(columns=['_j_sdmk'])
 
-            # TAHAP 4: PEMBUATAN HASH UID & PENGECEKAN KAMUS UID
+            # TAHAP 4: PEMBUATAN HASH UID & PENGECEKAN KAMUS
             def generate_uid(row):
                 nama_val = str(row.get("Nama Lengkap", "")).strip()
                 tgl_lhr_raw = str(row.get("Tanggal Lahir", "")).strip()
@@ -299,7 +315,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, file_m_ui
                 
             df_merged["Tanggal Proses"] = pd.Timestamp.now().strftime("%d-%m-%Y %H:%M")
 
-            # TAHAP 5: PEMETAAN KOLOM (MAPPING)
+            # TAHAP 5: PEMETAAN KOLOM
             def force_string(val):
                 if pd.isna(val) or val is None or str(val).lower() == 'nan': return None
                 val_str = str(val).strip()
