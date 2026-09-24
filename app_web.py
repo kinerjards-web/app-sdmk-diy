@@ -3,6 +3,7 @@ import pandas as pd
 import io
 import os
 import base64
+import hashlib
 from datetime import datetime
 
 # --- KONFIGURASI HALAMAN ---
@@ -100,7 +101,7 @@ if st.sidebar.button("🗑️ Reset / Hapus Data Unggahan", use_container_width=
     st.rerun()
 
 # =====================================================================
-# FUNGSI UTAMA ETL PIPELINE (STABLE VERSION)
+# FUNGSI UTAMA ETL PIPELINE (DENGAN HASH UID)
 # =====================================================================
 def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_cols):
     if not files_laporan or not file_m_faskes:
@@ -233,11 +234,24 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                     df_sdmk = df_sdmk.drop_duplicates(subset=['_j_sdmk'])
                     df_merged = pd.merge(df_merged, df_sdmk, on="_j_sdmk", how="left", suffixes=("", "_sdmk")).drop(columns=['_j_sdmk'])
 
-            # TAHAP 4: PEMBUATAN UID & LOG TANGGAL PROSES
-            if "Nama Lengkap" in df_merged.columns and "Tanggal Lahir" in df_merged.columns:
-                clean_nama = df_merged["Nama Lengkap"].astype(str).str.replace(r'[^a-zA-Z]', '', regex=True).str.upper()
-                clean_tgl = pd.to_datetime(df_merged["Tanggal Lahir"], errors='coerce').dt.strftime('%d%m%Y').fillna('00000000')
-                df_merged["UID"] = clean_nama + "_" + clean_tgl
+            # TAHAP 4: PEMBUATAN HASH UID (4 HURUF NAMA + HASH UNIK)
+            def generate_hash_uid(row):
+                nama_val = str(row.get("Nama Lengkap", ""))
+                clean_nama = ''.join([c for c in nama_val if c.isalpha()]).upper()
+                # Ambil 4 huruf pertama, jika kurang dari 4 huruf lengkapi dengan 'X'
+                prefix = clean_nama[:4].ljust(4, 'X')
+                
+                # Buat string unik dari gabungan Nama, Tanggal Lahir, dan NIK
+                tgl_lhr = str(row.get("Tanggal Lahir", ""))
+                nik_val = str(row.get("NIK", ""))
+                raw_string = f"{nama_val}_{tgl_lhr}_{nik_val}"
+                
+                # Hashing MD5 diambil 6 karakter pertama sebagai angka/huruf unik
+                hash_code = hashlib.md5(raw_string.encode('utf-8')).hexdigest()[:6].upper()
+                return f"{prefix}_{hash_code}"
+
+            if "Nama Lengkap" in df_merged.columns:
+                df_merged["UID"] = df_merged.apply(generate_hash_uid, axis=1)
             else:
                 df_merged["UID"] = None
                 
@@ -257,7 +271,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
                 "nama_unit": ("Nama Fasyankes", "Teks"), 
                 "nik": ("NIK", "Teks"),
                 "tanggal_lahir": ("Tanggal Lahir", "Tgl"), 
-                "nama": ("Nama Lengkap", "Teks"), # <--- Kolom nama dijamin terpisah & aman
+                "nama": ("Nama Lengkap", "Teks"), 
                 "jenis_tenaga": ("Jenis Tenaga", "Teks"),
                 "status_pegawai": ("Status", "Teks"), 
                 "jenis_kelamin": ("Jenis Kelamin", "Teks"), 
@@ -342,7 +356,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             output_buffer.seek(0)
             
             # TAMPILAN HASIL
-            st.success(f"✨ Laporan {mode.title()} berhasil diproses!")
+            st.success(f"✨ Laporan {mode.title()} dengan Hash UID berhasil diproses!")
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Pegawai Terstruktur", f"{len(df_final):,} Baris".replace(",", "."))
             c2.metric("Fasyankes Tanpa Kode", f"{len(df_no_kode)} Unit")
@@ -359,7 +373,7 @@ def jalankan_pipeline(mode, files_laporan, file_m_faskes, file_m_sdmk, target_co
             st.error(f"❌ Terjadi kesalahan teknis: {e}")
 
 # =====================================================================
-# MAIN AREA: SISTEM TABS (UI VERSI 5.3)
+# MAIN AREA: SISTEM TABS 
 # =====================================================================
 tab_standar, tab_lengkap = st.tabs([
     "📊 1. MODE LAPORAN STANDAR", 
@@ -372,11 +386,11 @@ with tab_standar:
     st.markdown("##### 📋 Sesuaikan Kolom Output")
     
     dict_standar = {
-        "uid": ("UID Pegawai (Nama+TglLahir)", True),
+        "uid": ("UID Pegawai (4 Huruf + Hash)", True),
         "kode_unit": ("Kode Fasyankes", True), 
         "nama_unit": ("Nama Fasyankes", True), 
         "tanggal_lahir": ("Tanggal Lahir", True),
-        "nama": ("Nama Lengkap", True),  # <--- Ditampilkan secara terpisah dan aman
+        "nama": ("Nama Lengkap", True), 
         "jenis_tenaga": ("Jenis Tenaga", True), 
         "status_pegawai": ("Status Pegawai", True),
         "jenis_kelamin": ("Jenis Kelamin", True), 
@@ -406,11 +420,11 @@ with tab_lengkap:
     st.markdown("##### 📋 Sesuaikan Kolom Output")
     
     dict_lengkap = {
-        "uid": ("UID Pegawai (Nama+TglLahir)", True),
+        "uid": ("UID Pegawai (4 Huruf + Hash)", True),
         "kode_unit": ("Kode Fasyankes", True), 
         "nama_unit": ("Nama Fasyankes", True), 
         "tanggal_lahir": ("Tanggal Lahir", True),
-        "nama": ("Nama Lengkap", True),  # <--- Ditampilkan secara terpisah dan aman
+        "nama": ("Nama Lengkap", True), 
         "jenis_tenaga": ("Jenis Tenaga", True), 
         "status_pegawai": ("Status Pegawai", True),
         "jenis_kelamin": ("Jenis Kelamin", True), 
